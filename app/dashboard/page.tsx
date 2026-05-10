@@ -1,10 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import type { Database } from '@/types/database';
+import { createClient  } from '@/lib/supabase/client';
 
 type Monitor =
   Database['public']['Tables']['monitors']['Row'];
@@ -16,6 +17,8 @@ export default function HomePage() {
   const [url, setUrl] = useState('');
   const [frequency, setFrequency] = useState('daily');
 
+  const supabase = createClient();
+
   const handleCreateMonitor = async () => {
     if (!url) {
       alert('Please enter a URL');
@@ -24,12 +27,21 @@ export default function HomePage() {
 
     setIsLoading(true);
     try {
+
+      const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
+        if (!session) {
+          alert('You must be logged in');
+          return;
+        }
+
       const response = await fetch('/api/monitors', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          // In a real app, get this from auth context
-          // Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
           url,
@@ -41,8 +53,7 @@ export default function HomePage() {
         throw new Error('Failed to create monitor');
       }
 
-      const monitor = await response.json();
-      setMonitors([...monitors, monitor]);
+      await fetchMonitors();
       setUrl('');
       alert('Monitor created successfully!');
     } catch (error) {
@@ -52,6 +63,36 @@ export default function HomePage() {
       setIsLoading(false);
     }
   };
+
+  const fetchMonitors = async () => {
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session) return;
+
+      const response = await fetch('/api/monitors', {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error);
+      }
+
+      setMonitors(result);
+    } catch (error) {
+      console.error('Fetch monitors error:', error);
+    }
+  };
+
+  useEffect(() => {
+    fetchMonitors();
+  }, []);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
