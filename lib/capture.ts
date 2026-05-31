@@ -5,32 +5,40 @@ export async function captureWebsite(url: string) {
     headless: true,
   });
 
-  const page = await browser.newPage({
-    viewport: {
-      width: 1440,
-      height: 900,
-    },
-  });
+  try {
+    const page = await browser.newPage({
+      viewport: {
+        width: 1440,
+        height: 900,
+      },
+    });
 
-  await page.goto(url, {
-    waitUntil: 'networkidle',
-    timeout: 60000,
-  });
+    const response = await page.goto(url, {
+      waitUntil: 'networkidle',
+      timeout: 60000,
+    });
 
-  const html = await page.content();
+    const statusCode = response?.status() ?? 0;
 
-  const screenshot = await page.screenshot({
-    fullPage: true,
-    type: 'png',
-  });
+    const html = await page.content();
 
-  const title = await page.title();
+    const screenshot = await page.screenshot({
+      fullPage: true,
+      type: 'png',
+    });
 
-  await browser.close();
+    const title = await page.title();
 
-  return {
-    html,
-    screenshot,
-    title,
-  };
+    const finalUrl = page.url();
+
+    return {
+      html,
+      screenshot,
+      title,
+      finalUrl,
+      statusCode,
+    };
+  } finally {
+    await browser.close();
+  }
 }
