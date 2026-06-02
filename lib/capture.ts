@@ -14,9 +14,13 @@ export async function captureWebsite(url: string) {
     });
 
     const response = await page.goto(url, {
-      waitUntil: 'networkidle',
+      waitUntil: 'domcontentloaded',
       timeout: 60000,
     });
+
+    await page.waitForLoadState('load');
+
+    await page.waitForTimeout(3000);
 
     const statusCode = response?.status() ?? 0;
 

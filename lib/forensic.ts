@@ -79,7 +79,7 @@ export async function verifyIntegrity(
 export function generateForensicMetadata(
   sha256Hash: string,
   statusCode: number,
-  headers: Record<string, string | string[]>,
+  // headers: Record<string, string | string[]>,
   timestamp: Date = new Date()
 ) {
   return {
@@ -87,7 +87,7 @@ export function generateForensicMetadata(
     hashAlgorithm: 'SHA-256-v1',
     timestamp: timestamp.toISOString(),
     statusCode,
-    headers,
+    // headers,
     forensicFormat: 'VeritasWeb v1',
   };
 }
