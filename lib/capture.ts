@@ -22,7 +22,7 @@ export async function captureWebsite(url: string) {
 
     await page.waitForTimeout(3000);
 
-    const statusCode = response?.status() ?? 0;
+    const statusCode = response?.status() ?? 200;
 
     const html = await page.content();
 
@@ -30,6 +30,8 @@ export async function captureWebsite(url: string) {
       fullPage: true,
       type: 'png',
     });
+
+    const headers = response?.headers() ?? {};
 
     const title = await page.title();
 
@@ -41,6 +43,7 @@ export async function captureWebsite(url: string) {
       title,
       finalUrl,
       statusCode,
+      headers,
     };
   } finally {
     await browser.close();
