@@ -1,11 +1,17 @@
 export const runtime = 'nodejs';
 
+import { createHash } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import {
   CaptureServiceError,
   runMonitorCapture,
 } from '@/lib/capture-service';
+import {
+  checkRateLimit,
+  getClientIp,
+  rateLimitResponse,
+} from '@/lib/rate-limit';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import {
   isMissingSupabaseEnvError,
@@ -51,6 +57,21 @@ export async function POST(request: NextRequest) {
       providedSecret !== configuredSecret
     ) {
       return unauthorizedCronResponse();
+    }
+
+    const secretHash = createHash('sha256')
+      .update(providedSecret)
+      .digest('hex')
+      .slice(0, 16);
+
+    const rateLimit = checkRateLimit({
+      key: `cron:${getClientIp(request)}:${secretHash}`,
+      limit: 10,
+      windowMs: 60 * 60 * 1000,
+    });
+
+    if (!rateLimit.allowed) {
+      return rateLimitResponse();
     }
 
     const limit = limitSchema.parse(

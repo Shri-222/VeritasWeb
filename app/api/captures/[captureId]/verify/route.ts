@@ -11,6 +11,10 @@ import {
 } from '@/lib/captures';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import {
+  checkRateLimit,
+  rateLimitResponse,
+} from '@/lib/rate-limit';
+import {
   isMissingSupabaseEnvError,
   missingSupabaseEnvResponse,
 } from '@/lib/supabase/env';
@@ -35,6 +39,16 @@ export async function POST(
 
     if (auth.errorResponse) {
       return auth.errorResponse;
+    }
+
+    const rateLimit = checkRateLimit({
+      key: `verify:${auth.user.id}`,
+      limit: 20,
+      windowMs: 10 * 60 * 1000,
+    });
+
+    if (!rateLimit.allowed) {
+      return rateLimitResponse();
     }
 
     const { captureId } = paramsSchema.parse(

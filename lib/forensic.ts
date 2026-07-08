@@ -1,8 +1,8 @@
 /**
  * VeritasWeb Forensic Utilities
  * 
- * This module provides cryptographic hashing and RFC 3161 Time Stamp Authority
- * signing capabilities for forensic integrity verification.
+ * This module provides cryptographic hashing helpers for stored capture
+ * integrity verification.
  */
 
 import crypto from 'crypto';
@@ -238,25 +238,16 @@ export function jsonFromManifest(
 }
 
 /**
- * RFC 3161 Time Stamp Authority (TSA) Signing
+ * Internal timestamp placeholder
  * 
- * This is a placeholder for implementing RFC 3161 TSA signing.
- * In production, this would:
- * 1. Create a Time Stamp Request (TSR) with the hash
- * 2. Send it to a trusted TSA (e.g., Digicert, GlobalSign)
- * 3. Receive a signed TSR token proving the time of capture
- * 
- * For now, this creates a mock token structure.
+ * This is not an RFC 3161 trusted timestamp and should not be described as
+ * independent proof of capture time. It is retained only as a development
+ * helper until a real timestamp authority integration is added.
  */
 export async function generateInternalTimestampProof(sha256Hash: string): Promise<string> {
-  // Mock implementation: In production, call a real TSA like:
-  // POST https://tsa.authority.example.com/rfc3161
-  // with the sha256Hash and receive a cryptographic proof
-  
-  // For demonstration, we create a structured token with metadata
   const timestamp = new Date().toISOString();
   const mockToken = {
-    version: '3161',
+    version: 'internal-placeholder-v1',
     hashAlgorithm: 'sha256',
     hash: sha256Hash,
     timestamp: timestamp,

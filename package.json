@@ -9,6 +9,7 @@
     "postinstall:playwright": "playwright install chromium",
     "test": "echo \"No tests configured yet\"",
     "typecheck": "tsc --noEmit",
+    "validate": "npm run typecheck && npm run lint && npm run build && npm test",
     "start": "next start"
   },
   "dependencies": {

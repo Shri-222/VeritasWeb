@@ -5,7 +5,10 @@
  * Validates input with Zod and stores in Supabase with RLS.
  */
 
-import { createMonitorSchema } from '@/lib/schemas';
+import {
+  createMonitorSchema,
+  validateCaptureUrl,
+} from '@/lib/schemas';
 import {
   apiErrorResponse,
   authenticateApiRequest,
@@ -31,9 +34,18 @@ export async function POST(request: NextRequest) {
     // Validate request body with Zod
     const validatedData = createMonitorSchema.parse(body);
 
-    const normalizedUrl = new URL(
+    const safeUrl = await validateCaptureUrl(
       validatedData.url
-    ).toString();
+    );
+
+    if (!safeUrl.success) {
+      return apiErrorResponse(
+        safeUrl.code,
+        safeUrl.message,
+        400
+      );
+    }
+
     const now = new Date().toISOString();
 
     const { data, error } = await auth.supabase
@@ -41,9 +53,9 @@ export async function POST(request: NextRequest) {
       .insert({
         user_id: auth.user.id,
 
-        url: validatedData.url,
+        url: safeUrl.url,
 
-        normalized_url: normalizedUrl,
+        normalized_url: safeUrl.url,
 
         frequency:
           validatedData.frequency,

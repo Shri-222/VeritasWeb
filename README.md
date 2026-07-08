@@ -1,226 +1,200 @@
 # VeritasWeb
 
-### *Automated Forensic Web Capture Platform for Legal Evidence Preservation*
+VeritasWeb is a forensic-style web capture MVP and LegalTech prototype. It helps authenticated users preserve web pages as stored evidence records with screenshots, HTML artifacts, metadata, cryptographic hashes, integrity verification, scheduled captures, and PDF evidence preservation reports.
 
-[![MIT License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Next.js Version](https://img.shields.io/badge/Next.js-15.x-black.svg)](https://nextjs.org)
-[![TypeScript](https://img.shields.io/badge/Language-TypeScript-blue.svg)](https://www.typescriptlang.org)
-[![Supabase](https://img.shields.io/badge/Backend-Supabase%20%7C%20PostgreSQL-emerald.svg)](https://supabase.com)
-[![Playwright](https://img.shields.io/badge/Automation-Playwright-orange.svg)](https://playwright.dev)
+It is not a replacement for legal advice, formal chain-of-custody procedures, notarization, or jurisdiction-specific evidence rules. The project is designed to present a strong, honest MVP for evidence preservation workflows.
 
----
+## Key Features
 
-## 📖 Overview
+- Supabase Auth backed registration/login.
+- Owner-scoped monitors with hourly, daily, or weekly frequency.
+- Manual `Capture Now` and protected scheduled capture endpoint.
+- Playwright server-side capture of screenshot and raw HTML.
+- Private Supabase Storage artifacts under the `captures` bucket.
+- Capture metadata including original URL, final URL, page title, HTTP status, headers, artifact paths, and trigger type.
+- SHA-256 hashes for screenshot, HTML, and deterministic capture manifest.
+- Integrity verification that recomputes stored artifact hashes.
+- PDF evidence preservation report generated from stored capture data.
+- Monitor pause/resume, frequency update, and safe delete behavior.
+- Lightweight in-memory rate limits for expensive capture/report/verify routes.
+- Basic SSRF protections, including DNS resolution checks before capture.
 
-Web content is ephemeral, dynamic, and fragile. Traditional methods of preserving digital evidence—such as simple screenshots or basic browser "Print to PDF" utilities—are completely inadequate for legal disputes, regulatory audits, or forensic investigations. They lack verifiable metadata, fail to maintain a chain of custody, and are highly vulnerable to client-side DOM manipulation or digital tampering.
+## Tech Stack
 
-**VeritasWeb** is a forensic-style LegalTech MVP for programmatically capturing, preserving, and reviewing web-based evidence records. By generating cryptographic hashes and storing capture metadata at the point of capture, VeritasWeb helps create an evidence preservation record that can be reviewed even if the original target website changes or disappears.
+- Next.js 15 App Router
+- React 19
+- TypeScript
+- Tailwind CSS and shadcn-style UI components
+- Supabase Auth, PostgreSQL, RLS, and Storage
+- Playwright Chromium
+- jsPDF
+- Zod
 
-### The Problem it Solves
-Manual screenshots lack an audit trail and cannot mathematically prove that an asset wasn't altered post-capture. VeritasWeb automates this process entirely, binding headless browser automation output directly to cryptographic proofs to prevent evidence repudiation.
+## Architecture Workflow
 
-### Who it is For
-* **Lawyers & Law Firms:** To preserve structured records of online defamation, patent/trademark infringement, and public declarations.
-* **Compliance & Risk Teams:** To build unalterable, automated historical logs of pricing structures, terms of service updates, or regulatory disclosures.
-* **Journalists & Investigators:** To establish permanent, timestamped records of investigative sources and web-based stories before deletion.
-* **Digital Forensics Professionals:** To acquire pristine, isolated captures containing raw HTTP responses, status codes, and full-page rendering structures.
+1. A user creates a monitor for a public HTTP/HTTPS URL.
+2. The server validates URL safety and stores the monitor under the authenticated user.
+3. Manual capture or the protected cron endpoint triggers the shared capture service.
+4. Playwright opens the stored monitor URL and captures screenshot, HTML, status, headers, and page metadata.
+5. The server computes screenshot, HTML, and manifest SHA-256 hashes.
+6. Screenshot and HTML artifacts are uploaded to the private Supabase `captures` bucket.
+7. Capture metadata is inserted into PostgreSQL.
+8. Users can verify stored artifacts and export a PDF report from the capture detail page.
 
----
+## Installation
 
-## 🚀 Features
-
-* 🔒 **Secure Multi-Tenant Auth:** Fully configured user registration, login, and protected routing states utilizing Supabase Auth and strict JWT verification.
-* 🤖 **Playwright Automation Engine:** Spawns detached, automated headless browser instances to open target websites, wait for complete asynchronous page rendering, and capture full-page screenshots along with raw HTML source code and text data titles.
-* 🖥️ **Granular Monitor Management:** Complete CRUD workflow allowing users to set up continuous website monitors tracking specific URLs (with integrated validation and string normalization via Zod) across customized frequencies (Hourly, Daily, Weekly).
-* 🛡️ **Forensic Cryptographic Ledger:** Computes deterministic `SHA-256` payload signatures instantly upon capture to verify data authenticity and execute real-time tamper-detection auditing.
-* 🗄️ **Decoupled Cloud Infrastructure:** Visual screenshot assets are securely offloaded to dedicated Supabase Storage buckets, while structural metadata logs (HTTP headers, status codes, timestamps, and backward-linking hashes) are locked inside a PostgreSQL instance.
-
----
-
-## 🛠️ Tech Stack
-
-### Frontend & Dashboard
-* **Framework:** Next.js 15 (App Router architecture, React Server Components)
-* **Language:** TypeScript
-* **Styling Engine:** Tailwind CSS
-* **Component Library:** Shadcn UI
-
-### Backend Architecture
-* **API Framework:** Next.js API Route Handlers
-* **Browser Automation:** Playwright Core
-* **Validation Layer:** Zod Schemas
-
-### Database & Security Layers
-* **Database Engine:** PostgreSQL (Managed via Supabase)
-* **Authentication & Security:** Supabase Auth with Row Level Security (RLS) policies
-* **Object Cloud Storage:** Supabase Storage
-* **Cryptography Modules:** Native Node.js Crypto Engine (`SHA-256` hashing algorithms)
-
----
-
-## 📐 System Architecture & Workflow
-
-VeritasWeb decouples user interaction, automated task queuing, and the secure storage layer to safeguard digital evidence against localized tampering.
-
-### Current Evidence Workflow
-
-```mermaid
-graph TD
-    A[User Engine Dashboard] -->|1. Configures Monitor Job| B(Monitor Saved to PostgreSQL)
-    B -->|2. Automated Capture Triggered| C{Playwright Browser Runner}
-    C -->|3. Establish Clean Session Context| D[Open Target URL & Wait for Render]
-    D -->|4. Capture Visual Array| E[Full-Page Screenshot PNG]
-    D -->|5. Harvest Payload Context| F[Extract Raw HTML, Status Codes, & Headers]
-    E & F -->|6. Cryptographic Signatures| G[Compute SHA-256 Checksum Hash]
-    G -->|7. Image Binary Upload| H[(Supabase Object Storage Bucket)]
-    G -->|8. Insert Core Metadata| I[(Supabase PostgreSQL Ledger)]
-    H & I -->|9. Chain Alignment Sealed| J[Defensible Evidence Record Created]
+```bash
+npm install
+npm run postinstall:playwright
+cp .env.example .env.local
+npm run dev
 ```
 
-## ⚙️ Installation
+Open `http://localhost:3000`.
 
-Follow these instructions to clone, configure, and execute an isolated development instance of VeritasWeb locally.
-
-### Prerequisites
-* **Node.js:** Version `18.x.x` or higher
-* **Package Manager:** npm
-* **Supabase Instance:** a Supabase project with PostgreSQL, Auth, and Storage enabled
-
-### Setup Instructions
-
-1. **Clone the core project:**
-   ```bash
-   git clone [https://github.com/Shri-222/VeritasWeb.git](https://github.com/Shri-222/VeritasWeb.git)
-   cd VeritasWeb
-   ```
-
-2. **Install Base Application Dependencies:**
-   ```bash
-   npm install
-   ```
-
-3. **Install Playwright Headless Browser Core Binaries:**
-   Download and configure the clean chromium environments required for isolation rendering:
-   ```bash
-   npx playwright install chromium
-   # or
-   npm run postinstall:playwright
-   ```
-
-4. **Configure Local Environment Variables:**
-   Copy `.env.example` to `.env.local` and fill in the Supabase values. Keep `.env.local` uncommitted because it contains server-only secrets.
-
-5. **Initialize Platform Development Host Engine:**
-   ```bash
-   npm run dev
-   ```
-   Open your browser space and navigate to http://localhost:3000 to interact with your dashboard workspace.
+On Windows PowerShell, use `Copy-Item .env.example .env.local` instead of `cp` if needed.
 
 ## Environment Variables
-   To bind your authentication endpoints and cloud storage matrices securely to your backend application, populate your root execution files using this template block:
 
-   ```bash
-   NEXT_PUBLIC_SUPABASE_URL=[https://your-supabase-project-id.supabase.co](https://your-supabase-project-id.supabase.co)
-   NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```bash
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+SUPABASE_JWT_SECRET=
+CRON_SECRET=
+SUPABASE_STORAGE_BUCKET=captures
+```
 
-   SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-   SUPABASE_JWT_SECRET=your-supabase-jwt-generated-secret-string-phrase
-   CRON_SECRET=your-long-random-cron-secret
+`NEXT_PUBLIC_*` values are browser-safe Supabase settings. `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET`, and `CRON_SECRET` are server-only secrets and must not be committed or exposed to client code.
 
-   # Optional documentation value; the current capture API uses "captures".
-   SUPABASE_STORAGE_BUCKET=captures
-   ```
+## Supabase Setup
 
-   `NEXT_PUBLIC_*` values are browser-safe Supabase project settings. `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET`, and `CRON_SECRET` are server-only secrets and must never be exposed in client code or committed to git.
+See [SUPABASE_SETUP.md](SUPABASE_SETUP.md).
 
-## Supabase Storage Security Note
+Run SQL scripts in order:
 
-The current capture upload path uses a Supabase Storage bucket named `captures`.
-For MVP safety, configure this bucket as private. Screenshots should not be
-publicly readable unless a later signed URL flow is implemented. Storage
-policies should prevent users from reading screenshots for monitors they do not
-own.
-Create the `captures` bucket before running manual captures. The Phase 3 capture
-pipeline stores both `screenshot.png` and `page.html` artifacts under a
-user/monitor/timestamp object path.
+1. `scripts/01-init-schema.sql`
+2. `scripts/02-capture-pipeline-fields.sql`
+3. `scripts/03-scheduled-captures.sql`
+4. `scripts/04-final-hardening.sql`
 
-## Capture Pipeline
+Create a private Storage bucket named `captures`. Stored screenshots and HTML files should not be public by default.
 
-Authenticated users can create a monitor and trigger `Capture Now` from the
-dashboard. The server revalidates monitor ownership, rechecks the URL for basic
-SSRF safety, launches Playwright Chromium, captures a full-page screenshot and
-raw HTML, uploads both artifacts to the private `captures` bucket, and inserts
-metadata into PostgreSQL.
+## Playwright Setup
 
-Each Phase 3 capture stores separate SHA-256 hashes for the screenshot and HTML.
-It also stores a deterministic manifest hash over the artifact paths, artifact
-hashes, URL metadata, status code, headers, capture timestamp, and previous
-capture hash. For backward compatibility, `storage_url` points to the screenshot
-path and `sha256_hash` stores the manifest hash.
+The capture pipeline requires Chromium:
+
+```bash
+npm run postinstall:playwright
+```
+
+Production hosts must support server-side Playwright execution. Static hosting is not sufficient.
 
 ## Scheduled Captures
 
-Active monitors can be captured by calling the server-owned cron endpoint:
+Scheduled captures are triggered by an external scheduler calling:
 
 ```bash
-curl -X POST http://localhost:3000/api/cron/capture-due \
-  -H "Authorization: Bearer your-cron-secret"
+curl -X POST https://your-app.example.com/api/cron/capture-due \
+  -H "Authorization: Bearer <CRON_SECRET>"
 ```
 
-The endpoint requires `CRON_SECRET` and should be invoked by an external
-scheduler in production. It selects active monitors where `next_capture_at` is
-due, respects each monitor frequency (`hourly`, `daily`, `weekly`), sets a
-short capture lock to reduce duplicate work, and reuses the same capture service
-as the manual `Capture Now` action. Each run processes up to 5 monitors by
-default and accepts `?limit=1..10`.
+The app does not run an internal scheduler. The cron endpoint is protected by `CRON_SECRET`, selects due active monitors, applies a short lock to reduce duplicate work, and uses the same capture service as manual capture.
 
-Scheduled captures require a server environment that can run Playwright
-Chromium. Keep the `captures` bucket private; scheduled captures store the same
-screenshot and HTML artifacts as manual captures.
+## Verification Workflow
 
-## Integrity Verification
+Capture detail pages include `Verify Integrity`. Verification downloads the stored private screenshot and HTML artifacts server-side, recomputes hashes, rebuilds the deterministic manifest, and compares those values with the database record.
 
-Capture detail pages let authenticated users inspect stored metadata and run an
-integrity verification check. Verification downloads the private screenshot and
-HTML artifacts server-side, recomputes their SHA-256 hashes, rebuilds the same
-deterministic evidence manifest, and compares the computed hashes with the
-stored database values.
+Verification confirms stored artifacts match their recorded hashes. It does not independently prove legal admissibility.
 
-Verification confirms that the stored artifacts still match the stored hashes
-and manifest metadata. It does not automatically guarantee court admissibility,
-replace legal chain-of-custody procedures, or act as an external timestamp
-authority. Screenshot previews use short-lived signed URLs; the underlying
-`captures` bucket should remain private.
+## PDF Report Workflow
 
-## PDF Evidence Reports
+Capture detail pages include `Export PDF Report`. The PDF is generated from stored capture data and stored artifacts; export does not recapture the website.
 
-Capture detail pages include an `Export PDF Report` action. Reports are generated
-from stored capture data and stored artifacts; the export does not recapture the
-target website. Each report includes capture metadata, original and final URLs,
-artifact paths, screenshot/HTML/manifest hashes, a verification result, selected
-HTTP response metadata, and an honest limitations section.
+Reports include:
 
-If the private screenshot artifact can be downloaded server-side, the report
-embeds a scaled screenshot preview. If embedding fails, the PDF still downloads
-and records that the screenshot could not be included. The report is an evidence
-preservation summary and does not automatically establish court admissibility or
-replace formal chain-of-custody procedures.
+- report metadata
+- capture summary
+- artifact paths
+- screenshot/HTML/manifest hashes
+- previous capture hash when present
+- verification result
+- HTTP response metadata
+- limitations and disclaimer
+- screenshot preview when server-side embedding succeeds
 
-## Server Role Usage Note
+## Monitor Management
 
-Normal user-scoped monitor and capture listing routes should use the
-authenticated Supabase client so PostgreSQL RLS remains active. The service role
-client is reserved for server-only artifact and scheduled runner work after
-ownership or cron-secret authorization has already been verified, such as
-uploading screenshots and HTML during capture, selecting due monitors for cron,
-generating short-lived screenshot signed URLs for owned captures, and
-downloading stored artifacts during integrity verification.
+Users can:
 
-## Database Schema Overview
+- create monitors
+- manually capture a monitor
+- pause active monitors
+- resume paused monitors
+- update frequency
+- delete monitors only when they do not already have captures
 
-   The platform maintains two primary target tables within PostgreSQL, strictly enforced through Row Level Security (RLS) conditions to ensure complete multi-tenant tenant data isolation.
+Monitors with evidence records are not hard-deleted from the dashboard/API; pause them instead.
 
-   ### monitors Table
-      Stores targeted website tracking jobs assigned by consumers.
+## Deployment
 
-      
+See [DEPLOYMENT.md](DEPLOYMENT.md).
+
+The repository includes a simple Dockerfile that installs Playwright Chromium and builds the Next.js app:
+
+```bash
+docker build -t veritasweb .
+docker run --env-file .env.local -p 3000:3000 veritasweb
+```
+
+Health check:
+
+```bash
+curl http://localhost:3000/api/health
+```
+
+## Validation
+
+```bash
+npm run typecheck
+npm run lint
+npm run build
+npm test
+npm run validate
+npm audit --omit=dev
+```
+
+`npm run validate` runs typecheck, lint, build, and test.
+
+## QA
+
+See [QA_CHECKLIST.md](QA_CHECKLIST.md) for manual test steps covering setup, capture, artifact storage, verification, PDF export, monitor actions, cron authorization, and cross-user access checks.
+
+## Limitations
+
+- Not guaranteed court-admissible by itself.
+- No RFC3161 trusted timestamping yet.
+- No notarized chain-of-custody yet.
+- No enterprise audit trail yet.
+- In-memory rate limits are MVP safeguards only; production should use platform-level or Redis-backed rate limiting.
+- Capture results can vary due to cookies, geography, authentication state, scripts, A/B tests, bot detection, or dynamic content.
+- Playwright needs a server or container environment with Chromium support.
+- Stored artifacts are private by default and accessed through server-side checks or short-lived signed URLs for owners.
+
+## Roadmap
+
+- Stronger audit trail for monitor and capture actions.
+- Production-grade distributed rate limiting.
+- Optional trusted timestamping.
+- Evidence packet export formats beyond PDF.
+- More robust capture configuration for authenticated or region-specific pages.
+- Admin/operational observability for scheduled capture queues.
+
+## Screenshots
+
+Screenshots are not committed yet. Suggested placeholders for a final presentation:
+
+- dashboard monitor list
+- capture detail page
+- integrity verification result
+- PDF report preview

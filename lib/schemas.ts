@@ -10,6 +10,8 @@
  * - Strict forensic validation
  */
 
+import { lookup } from 'node:dns/promises';
+import { isIP } from 'node:net';
 import { z } from 'zod';
 
 // -----------------------------------------------------
@@ -21,17 +23,118 @@ const MAX_COOKIE_COUNT = 50;
 const MAX_COOKIE_NAME_LENGTH = 200;
 const MAX_COOKIE_VALUE_LENGTH = 4000;
 
+const BLOCKED_HOSTS = [
+  '169.254.169.254',
+  'metadata.google.internal',
+  'metadata.azure.internal',
+];
+
 // -----------------------------------------------------
 // Helpers
 // -----------------------------------------------------
 
+function isPrivateIpv4(hostname: string) {
+  const parts = hostname.split('.').map((part) => Number(part));
+
+  if (
+    parts.length !== 4 ||
+    parts.some(
+      (part) =>
+        !Number.isInteger(part) ||
+        part < 0 ||
+        part > 255
+    )
+  ) {
+    return false;
+  }
+
+  const [first, second] = parts;
+
+  return (
+    first === 10 ||
+    first === 127 ||
+    (first === 169 && second === 254) ||
+    (first === 172 && second >= 16 && second <= 31) ||
+    (first === 192 && second === 168) ||
+    first === 0
+  );
+}
+
+function isPrivateIpv6(hostname: string) {
+  const normalized = hostname.toLowerCase();
+
+  if (
+    normalized === '::1' ||
+    normalized.startsWith('fe80:') ||
+    normalized.startsWith('fe90:') ||
+    normalized.startsWith('fea0:') ||
+    normalized.startsWith('feb0:')
+  ) {
+    return true;
+  }
+
+  const firstHextet = Number.parseInt(
+    normalized.split(':')[0] || '0',
+    16
+  );
+
+  if (
+    Number.isFinite(firstHextet) &&
+    firstHextet >= 0xfc00 &&
+    firstHextet <= 0xfdff
+  ) {
+    return true;
+  }
+
+  const mappedIpv4 = normalized.match(
+    /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/
+  );
+
+  return mappedIpv4
+    ? isPrivateIpv4(mappedIpv4[1])
+    : false;
+}
+
+function normalizeHostname(hostname: string) {
+  return hostname
+    .toLowerCase()
+    .replace(/^\[/, '')
+    .replace(/\]$/, '')
+    .replace(/\.$/, '');
+}
+
+function isInternalHostname(hostname: string) {
+  if (
+    hostname === 'localhost' ||
+    hostname.endsWith('.localhost') ||
+    hostname.endsWith('.local') ||
+    hostname.endsWith('.internal') ||
+    hostname.endsWith('.test')
+  ) {
+    return true;
+  }
+
+  return isIP(hostname) === 0 && !hostname.includes('.');
+}
+
+function isPrivateOrInternalAddress(address: string) {
+  const normalized = normalizeHostname(address);
+  const ipVersion = isIP(normalized);
+
+  if (ipVersion === 4) {
+    return isPrivateIpv4(normalized);
+  }
+
+  if (ipVersion === 6) {
+    return isPrivateIpv6(normalized);
+  }
+
+  return isInternalHostname(normalized);
+}
+
 /**
- * Basic SSRF protection
- * Blocks:
- * - localhost
- * - private IPs
- * - loopback
- * - internal hostnames
+ * Basic synchronous SSRF protection for form/schema validation.
+ * Capture execution uses validateCaptureUrl() for DNS-backed checks.
  */
 export function isSafePublicUrl(value: string): boolean {
   try {
@@ -42,69 +145,101 @@ export function isSafePublicUrl(value: string): boolean {
       return false;
     }
 
-    const hostname = url.hostname
-      .toLowerCase()
-      .replace(/^\[/, '')
-      .replace(/\]$/, '');
-
-    // Block localhost
-    if (
-      hostname === 'localhost' ||
-      hostname === '127.0.0.1' ||
-      hostname === '0.0.0.0' ||
-      hostname === '::1'
-    ) {
-      return false;
-    }
-
-    // Block internal hostnames
-    if (
-      hostname.endsWith('.local') ||
-      hostname.endsWith('.internal')
-    ) {
-      return false;
-    }
-
-    // Block private IPv4 ranges
-    const privateIpPatterns = [
-      /^10\./,
-      /^127\./,
-      /^169\.254\./,
-      /^172\.(1[6-9]|2\d|3[0-1])\./,
-      /^192\.168\./,
-    ];
+    const hostname = normalizeHostname(url.hostname);
 
     if (
-      privateIpPatterns.some((pattern) =>
-        pattern.test(hostname)
-      )
+      BLOCKED_HOSTS.includes(hostname) ||
+      isPrivateOrInternalAddress(hostname)
     ) {
-      return false;
-    }
-
-    if (
-      hostname.includes(':') &&
-      (hostname.startsWith('fc') ||
-        hostname.startsWith('fd') ||
-        hostname.startsWith('fe80:'))
-    ) {
-      return false;
-    }
-
-    // Block AWS/GCP/Azure metadata endpoints
-    const blockedHosts = [
-      '169.254.169.254',
-      'metadata.google.internal',
-      'metadata.azure.internal',
-    ];
-
-    if (blockedHosts.includes(hostname)) {
       return false;
     }
 
     return true;
   } catch {
     return false;
+  }
+}
+
+export type CaptureUrlValidationResult =
+  | {
+      success: true;
+      url: string;
+      hostname: string;
+      resolvedAddresses: string[];
+    }
+  | {
+      success: false;
+      code: 'UNSAFE_URL' | 'VALIDATION_ERROR';
+      message: string;
+    };
+
+export async function validateCaptureUrl(
+  value: string
+): Promise<CaptureUrlValidationResult> {
+  let url: URL;
+
+  try {
+    url = new URL(value.trim());
+  } catch {
+    return {
+      success: false,
+      code: 'VALIDATION_ERROR',
+      message: 'Invalid URL format.',
+    };
+  }
+
+  if (!isSafePublicUrl(url.toString())) {
+    return {
+      success: false,
+      code: 'UNSAFE_URL',
+      message: 'Only public HTTP/HTTPS URLs are allowed.',
+    };
+  }
+
+  const hostname = normalizeHostname(url.hostname);
+
+  if (isIP(hostname) !== 0) {
+    return {
+      success: true,
+      url: url.toString(),
+      hostname,
+      resolvedAddresses: [hostname],
+    };
+  }
+
+  try {
+    const resolved = await lookup(hostname, {
+      all: true,
+      verbatim: true,
+    });
+
+    const addresses = resolved.map((entry) => entry.address);
+
+    if (
+      addresses.length === 0 ||
+      addresses.some(isPrivateOrInternalAddress)
+    ) {
+      return {
+        success: false,
+        code: 'UNSAFE_URL',
+        message:
+          'URL resolved to an internal or private network address.',
+      };
+    }
+
+    return {
+      success: true,
+      url: url.toString(),
+      hostname,
+      resolvedAddresses: addresses,
+    };
+  } catch {
+    return {
+      success: false,
+      code: 'UNSAFE_URL',
+      message:
+        'URL hostname could not be resolved safely.',
+    };
   }
 }
 

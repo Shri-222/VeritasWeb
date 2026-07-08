@@ -36,9 +36,11 @@ export default function HomePage() {
   const [captures, setCaptures] = useState<CaptureHistoryItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [captureLoading, setCaptureLoading] = useState<Record<string, boolean>>({});
+  const [monitorActionLoading, setMonitorActionLoading] = useState<Record<string, boolean>>({});
+  const [frequencyDrafts, setFrequencyDrafts] = useState<Record<string, Monitor['frequency']>>({});
   const [statusMessage, setStatusMessage] = useState('');
   const [url, setUrl] = useState('');
-  const [frequency, setFrequency] = useState('daily');
+  const [frequency, setFrequency] = useState<Monitor['frequency']>('daily');
 
   const handleCreateMonitor = async () => {
     if (!url) {
@@ -106,14 +108,28 @@ export default function HomePage() {
       const result = await response.json();
 
       if (!response.ok) {
-        throw new Error(result.error);
+        throw new Error(
+          result.message ||
+            result.error ||
+            'Failed to fetch monitors'
+        );
       }
 
-      setMonitors(
-        Array.isArray(result)
-          ? result
-          : result.data ?? []
-      );
+      const nextMonitors = Array.isArray(result)
+        ? result
+        : result.data ?? [];
+
+      setMonitors(nextMonitors);
+      setFrequencyDrafts((current) => {
+        const next = { ...current };
+
+        nextMonitors.forEach((monitor: Monitor) => {
+          next[monitor.id] =
+            next[monitor.id] ?? monitor.frequency;
+        });
+
+        return next;
+      });
     } catch (error) {
       console.error('Fetch monitors error:', error);
     }
@@ -209,6 +225,122 @@ export default function HomePage() {
     }
   };
 
+  const handleUpdateMonitor = async (
+    monitorId: string,
+    body: Partial<Pick<Monitor, 'frequency' | 'status'>>
+  ) => {
+    if (monitorActionLoading[monitorId]) return;
+
+    setMonitorActionLoading((current) => ({
+      ...current,
+      [monitorId]: true,
+    }));
+
+    try {
+      const supabase = createClient();
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session) {
+        setStatusMessage('You must be logged in.');
+        return;
+      }
+
+      const response = await fetch(`/api/monitors/${monitorId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify(body),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          result.message || 'Monitor update failed.'
+        );
+      }
+
+      await fetchMonitors();
+      setStatusMessage('Monitor updated successfully.');
+    } catch (error) {
+      console.error('Monitor update error:', error);
+      setStatusMessage(
+        error instanceof Error
+          ? error.message
+          : 'Monitor update failed.'
+      );
+    } finally {
+      setMonitorActionLoading((current) => ({
+        ...current,
+        [monitorId]: false,
+      }));
+    }
+  };
+
+  const handleDeleteMonitor = async (monitorId: string) => {
+    if (monitorActionLoading[monitorId]) return;
+
+    const confirmed = window.confirm(
+      'Delete this monitor? This is only allowed before it has evidence captures.'
+    );
+
+    if (!confirmed) return;
+
+    setMonitorActionLoading((current) => ({
+      ...current,
+      [monitorId]: true,
+    }));
+
+    try {
+      const supabase = createClient();
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session) {
+        setStatusMessage('You must be logged in.');
+        return;
+      }
+
+      const response = await fetch(`/api/monitors/${monitorId}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          result.message || 'Monitor deletion failed.'
+        );
+      }
+
+      await fetchMonitors();
+      await fetchCaptures();
+      setStatusMessage('Monitor deleted successfully.');
+    } catch (error) {
+      console.error('Monitor deletion error:', error);
+      setStatusMessage(
+        error instanceof Error
+          ? error.message
+          : 'Monitor deletion failed.'
+      );
+    } finally {
+      setMonitorActionLoading((current) => ({
+        ...current,
+        [monitorId]: false,
+      }));
+    }
+  };
+
   useEffect(() => {
     fetchMonitors();
     fetchCaptures();
@@ -239,7 +371,7 @@ export default function HomePage() {
             Capture the Web, Verify the Truth
           </h2>
           <p className="text-lg text-slate-300 max-w-2xl">
-            VeritasWeb enables legal professionals and investigators to capture, cryptographically hash, and validate web content for use in legal proceedings.
+            VeritasWeb helps legal professionals and investigators preserve, hash, and review stored web capture records.
           </p>
         </div>
 
@@ -272,7 +404,11 @@ export default function HomePage() {
                 </label>
                 <select
                   value={frequency}
-                  onChange={(e) => setFrequency(e.target.value)}
+                  onChange={(e) =>
+                    setFrequency(
+                      e.target.value as Monitor['frequency']
+                    )
+                  }
                   className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-md text-white"
                 >
                   <option value="hourly">Hourly</option>
@@ -294,7 +430,7 @@ export default function HomePage() {
 
         {/* Monitors List */}
         <div className="space-y-4">
-          <h3 className="text-2xl font-bold text-white">Active Monitors</h3>
+          <h3 className="text-2xl font-bold text-white">Monitors</h3>
           {statusMessage && (
             <Card className="bg-slate-800 border-slate-700">
               <CardContent className="pt-6">
@@ -358,29 +494,97 @@ export default function HomePage() {
                         </p>
                       )}
                     </div>
-                    <div className="space-x-2">
+                    <div className="flex flex-wrap justify-end gap-2">
                       <Button
                         variant="outline"
                         onClick={() => handleCaptureNow(monitor.id)}
-                        disabled={captureLoading[monitor.id]}
+                        disabled={captureLoading[monitor.id] || monitorActionLoading[monitor.id]}
                         className="bg-cyan-500 border-cyan-500 text-white hover:bg-cyan-600"
                       >
                         {captureLoading[monitor.id]
                           ? 'Capturing...'
                           : 'Capture Now'}
                       </Button>
+                      {monitor.status === 'active' ? (
+                        <Button
+                          variant="outline"
+                          onClick={() =>
+                            handleUpdateMonitor(monitor.id, {
+                              status: 'paused',
+                            })
+                          }
+                          disabled={monitorActionLoading[monitor.id]}
+                          className="bg-slate-700 border-slate-600 text-white hover:bg-slate-600"
+                        >
+                          {monitorActionLoading[monitor.id]
+                            ? 'Updating...'
+                            : 'Pause'}
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          onClick={() =>
+                            handleUpdateMonitor(monitor.id, {
+                              status: 'active',
+                            })
+                          }
+                          disabled={monitorActionLoading[monitor.id]}
+                          className="bg-slate-700 border-slate-600 text-white hover:bg-slate-600"
+                        >
+                          {monitorActionLoading[monitor.id]
+                            ? 'Updating...'
+                            : 'Resume'}
+                        </Button>
+                      )}
+                      <select
+                        value={
+                          frequencyDrafts[monitor.id] ??
+                          monitor.frequency
+                        }
+                        onChange={(event) =>
+                          setFrequencyDrafts((current) => ({
+                            ...current,
+                            [monitor.id]: event.target
+                              .value as Monitor['frequency'],
+                          }))
+                        }
+                        disabled={monitorActionLoading[monitor.id]}
+                        className="rounded-md border border-slate-600 bg-slate-700 px-3 py-2 text-sm text-white"
+                      >
+                        <option value="hourly">Hourly</option>
+                        <option value="daily">Daily</option>
+                        <option value="weekly">Weekly</option>
+                      </select>
                       <Button
                         variant="outline"
+                        onClick={() =>
+                          handleUpdateMonitor(monitor.id, {
+                            frequency:
+                              frequencyDrafts[monitor.id] ??
+                              monitor.frequency,
+                          })
+                        }
+                        disabled={
+                          monitorActionLoading[monitor.id] ||
+                          (frequencyDrafts[monitor.id] ??
+                            monitor.frequency) === monitor.frequency
+                        }
                         className="bg-slate-700 border-slate-600 text-white hover:bg-slate-600"
                       >
-                        View Captures
+                        Save Frequency
                       </Button>
-                      <Button
-                        variant="outline"
-                        className="bg-slate-700 border-slate-600 text-white hover:bg-slate-600"
-                      >
-                        Export Affidavit
-                      </Button>
+                      {(monitor.capture_count ?? 0) === 0 && (
+                        <Button
+                          variant="outline"
+                          onClick={() =>
+                            handleDeleteMonitor(monitor.id)
+                          }
+                          disabled={monitorActionLoading[monitor.id]}
+                          className="bg-red-950 border-red-800 text-red-100 hover:bg-red-900"
+                        >
+                          Delete
+                        </Button>
+                      )}
                     </div>
                   </div>
                 </CardContent>
@@ -481,19 +685,19 @@ export default function HomePage() {
 
           <Card className="bg-slate-800 border-slate-700">
             <CardHeader>
-              <CardTitle className="text-white">Timestamping</CardTitle>
+              <CardTitle className="text-white">Capture Metadata</CardTitle>
             </CardHeader>
             <CardContent className="text-slate-300">
-              RFC 3161 Time Stamp Authority integration provides cryptographic proof of capture time.
+              Reports include capture timestamps, URLs, HTTP status, headers, artifact paths, and integrity hashes.
             </CardContent>
           </Card>
 
           <Card className="bg-slate-800 border-slate-700">
             <CardHeader>
-              <CardTitle className="text-white">Legal Compliance</CardTitle>
+              <CardTitle className="text-white">Evidence Reports</CardTitle>
             </CardHeader>
             <CardContent className="text-slate-300">
-              Affidavit generation complies with FRE 901(b)(5) and 902(13) rules of evidence.
+              Export stored capture data into an evidence preservation PDF with an honest limitations section.
             </CardContent>
           </Card>
         </div>

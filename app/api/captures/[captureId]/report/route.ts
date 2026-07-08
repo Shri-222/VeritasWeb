@@ -10,6 +10,10 @@ import {
   fetchOwnedCaptureById,
 } from '@/lib/captures';
 import { generateCaptureReportPdf } from '@/lib/pdf-report';
+import {
+  checkRateLimit,
+  rateLimitResponse,
+} from '@/lib/rate-limit';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import {
   isMissingSupabaseEnvError,
@@ -33,6 +37,16 @@ export async function GET(
 
     if (auth.errorResponse) {
       return auth.errorResponse;
+    }
+
+    const rateLimit = checkRateLimit({
+      key: `pdf-report:${auth.user.id}`,
+      limit: 10,
+      windowMs: 10 * 60 * 1000,
+    });
+
+    if (!rateLimit.allowed) {
+      return rateLimitResponse();
     }
 
     const { captureId } = paramsSchema.parse(

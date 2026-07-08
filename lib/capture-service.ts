@@ -4,7 +4,7 @@ import {
   calculateSHA256Hash,
   createEvidenceManifestWithHash,
 } from '@/lib/forensic';
-import { safeUrlSchema } from '@/lib/schemas';
+import { validateCaptureUrl } from '@/lib/schemas';
 import type { Database } from '@/types/database';
 
 export type CaptureTriggerType = 'manual' | 'scheduled';
@@ -119,12 +119,12 @@ export async function runMonitorCapture({
   supabaseAdmin,
 }: RunMonitorCaptureInput): Promise<RunMonitorCaptureResult> {
   try {
-    const safeUrl = safeUrlSchema.safeParse(monitor.url);
+    const safeUrl = await validateCaptureUrl(monitor.url);
 
     if (!safeUrl.success) {
       throw new CaptureServiceError(
-        'UNSAFE_URL',
-        'Monitor URL is not safe to capture.',
+        safeUrl.code,
+        safeUrl.message,
         400
       );
     }
@@ -147,7 +147,7 @@ export async function runMonitorCapture({
       previousCapture?.sha256_hash ??
       null;
 
-    const result = await captureWebsite(safeUrl.data);
+    const result = await captureWebsite(safeUrl.url);
 
     const screenshotSha256 =
       await calculateSHA256Hash(

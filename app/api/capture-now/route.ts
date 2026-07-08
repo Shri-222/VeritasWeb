@@ -10,6 +10,10 @@ import {
 } from '@/lib/capture-service';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import {
+  checkRateLimit,
+  rateLimitResponse,
+} from '@/lib/rate-limit';
+import {
   isMissingSupabaseEnvError,
   missingSupabaseEnvResponse,
 } from '@/lib/supabase/env';
@@ -25,6 +29,16 @@ export async function POST(request: NextRequest) {
 
     if (auth.errorResponse) {
       return auth.errorResponse;
+    }
+
+    const rateLimit = checkRateLimit({
+      key: `manual-capture:${auth.user.id}`,
+      limit: 5,
+      windowMs: 10 * 60 * 1000,
+    });
+
+    if (!rateLimit.allowed) {
+      return rateLimitResponse();
     }
 
     const body = await request.json();
