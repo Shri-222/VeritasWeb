@@ -11,9 +11,15 @@ import {
   authenticateApiRequest,
 } from '@/lib/auth';
 import {
+  fetchOwnedCaptureById,
+} from '@/lib/captures';
+import { generateCaptureReportPdf } from '@/lib/pdf-report';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import {
   isMissingSupabaseEnvError,
   missingSupabaseEnvResponse,
 } from '@/lib/supabase/env';
+import { verifyCaptureArtifacts } from '@/lib/verification';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 
@@ -49,7 +55,8 @@ if (typeof globalThis.navigator === 'undefined') {
 // ----------------------------------------------------
 
 const requestSchema = z.object({
-  monitor_id: z.string().uuid('Invalid monitor ID format'),
+  captureId: z.string().uuid('Invalid capture ID format').optional(),
+  monitor_id: z.string().uuid('Invalid monitor ID format').optional(),
   start_date: z.string().datetime().optional().nullable(),
   end_date: z.string().datetime().optional().nullable(),
 });
@@ -78,10 +85,69 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
 
     const {
+      captureId,
       monitor_id,
       start_date,
       end_date,
     } = requestSchema.parse(body);
+
+    if (captureId) {
+      const { data: capture, error } =
+        await fetchOwnedCaptureById(
+          auth.supabase,
+          auth.user.id,
+          captureId
+        );
+
+      if (error) {
+        console.error(
+          'Export Capture Report Error:',
+          error
+        );
+
+        return apiErrorResponse(
+          'INTERNAL_ERROR',
+          'Failed to fetch capture.',
+          500
+        );
+      }
+
+      if (!capture) {
+        return apiErrorResponse(
+          'CAPTURE_NOT_FOUND',
+          'Capture not found.',
+          404
+        );
+      }
+
+      const supabaseAdmin = getSupabaseAdmin();
+      const verification = await verifyCaptureArtifacts(
+        capture,
+        supabaseAdmin
+      );
+
+      const pdfBuffer = generateCaptureReportPdf({
+        capture,
+        verification,
+        generatedAt: new Date().toISOString(),
+      });
+
+      return new NextResponse(pdfBuffer, {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': `attachment; filename="veritasweb-capture-${captureId}.pdf"`,
+        },
+      });
+    }
+
+    if (!monitor_id) {
+      return apiErrorResponse(
+        'VALIDATION_ERROR',
+        'captureId or monitor_id is required.',
+        400
+      );
+    }
 
     // --------------------------------------------
     // Fetch Monitor

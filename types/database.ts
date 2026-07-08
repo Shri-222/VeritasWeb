@@ -27,6 +27,12 @@ export type Database = {
 
             created_at: string;
             updated_at: string;
+            last_captured_at: string | null;
+            next_capture_at: string | null;
+            last_capture_status: string | null;
+            last_capture_error: string | null;
+            capture_count: number;
+            capture_lock_until: string | null;
         };
 
         Insert: {
@@ -51,6 +57,12 @@ export type Database = {
 
             created_at?: string;
             updated_at?: string;
+            last_captured_at?: string | null;
+            next_capture_at?: string | null;
+            last_capture_status?: string | null;
+            last_capture_error?: string | null;
+            capture_count?: number;
+            capture_lock_until?: string | null;
         };
 
         Update: {
@@ -75,6 +87,12 @@ export type Database = {
 
             created_at?: string;
             updated_at?: string;
+            last_captured_at?: string | null;
+            next_capture_at?: string | null;
+            last_capture_status?: string | null;
+            last_capture_error?: string | null;
+            capture_count?: number;
+            capture_lock_until?: string | null;
         };
 
         Relationships: [
@@ -114,6 +132,7 @@ export type Database = {
             captured_at: string;
             capture_status: string;
             error_message: string | null;
+            trigger_type: string;
             created_at: string;
         };
 
@@ -138,6 +157,7 @@ export type Database = {
             captured_at?: string;
             capture_status?: string;
             error_message?: string | null;
+            trigger_type?: string;
             created_at?: string;
         };
 
@@ -162,6 +182,7 @@ export type Database = {
             captured_at?: string;
             capture_status?: string;
             error_message?: string | null;
+            trigger_type?: string;
             created_at?: string;
         };
 

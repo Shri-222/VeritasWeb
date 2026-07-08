@@ -34,25 +34,32 @@ export async function POST(request: NextRequest) {
     const normalizedUrl = new URL(
       validatedData.url
     ).toString();
+    const now = new Date().toISOString();
 
     const { data, error } = await auth.supabase
       .from('monitors')
       .insert({
-      user_id: auth.user.id,
+        user_id: auth.user.id,
 
-      url: validatedData.url,
+        url: validatedData.url,
 
-      normalized_url: normalizedUrl,
+        normalized_url: normalizedUrl,
 
-      frequency:
-        validatedData.frequency,
+        frequency:
+          validatedData.frequency,
 
-      status: 'active',
+        status: 'active',
 
-      session_cookies:
-        validatedData.session_cookies ??
-        null,
-    })
+        session_cookies:
+          validatedData.session_cookies ??
+          null,
+
+        next_capture_at: now,
+        last_capture_status: null,
+        last_capture_error: null,
+        capture_count: 0,
+        capture_lock_until: null,
+      })
       .select();
 
     if (error) {

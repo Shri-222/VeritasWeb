@@ -192,6 +192,7 @@ export default function HomePage() {
       }
 
       await fetchCaptures();
+      await fetchMonitors();
       setStatusMessage('Capture completed successfully.');
     } catch (error) {
       console.error('Capture now error:', error);
@@ -330,6 +331,32 @@ export default function HomePage() {
                         <span className="font-medium">Status:</span>{' '}
                         <span className="text-green-400">{monitor.status}</span>
                       </p>
+                      <p className="text-sm text-slate-300">
+                        <span className="font-medium">Last captured:</span>{' '}
+                        {monitor.last_captured_at
+                          ? new Date(monitor.last_captured_at).toLocaleString()
+                          : 'Never'}
+                      </p>
+                      <p className="text-sm text-slate-300">
+                        <span className="font-medium">Next capture:</span>{' '}
+                        {monitor.next_capture_at
+                          ? new Date(monitor.next_capture_at).toLocaleString()
+                          : 'Not scheduled'}
+                      </p>
+                      <p className="text-sm text-slate-300">
+                        <span className="font-medium">Last capture status:</span>{' '}
+                        {monitor.last_capture_status || 'None'}
+                      </p>
+                      <p className="text-sm text-slate-300">
+                        <span className="font-medium">Capture count:</span>{' '}
+                        {monitor.capture_count ?? 0}
+                      </p>
+                      {monitor.last_capture_error && (
+                        <p className="text-sm text-red-300">
+                          <span className="font-medium">Last error:</span>{' '}
+                          {monitor.last_capture_error}
+                        </p>
+                      )}
                     </div>
                     <div className="space-x-2">
                       <Button

@@ -125,12 +125,13 @@ Follow these instructions to clone, configure, and execute an isolated developme
 
    SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
    SUPABASE_JWT_SECRET=your-supabase-jwt-generated-secret-string-phrase
+   CRON_SECRET=your-long-random-cron-secret
 
    # Optional documentation value; the current capture API uses "captures".
    SUPABASE_STORAGE_BUCKET=captures
    ```
 
-   `NEXT_PUBLIC_*` values are browser-safe Supabase project settings. `SUPABASE_SERVICE_ROLE_KEY` and `SUPABASE_JWT_SECRET` are server-only secrets and must never be exposed in client code or committed to git.
+   `NEXT_PUBLIC_*` values are browser-safe Supabase project settings. `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET`, and `CRON_SECRET` are server-only secrets and must never be exposed in client code or committed to git.
 
 ## Supabase Storage Security Note
 
@@ -157,6 +158,26 @@ hashes, URL metadata, status code, headers, capture timestamp, and previous
 capture hash. For backward compatibility, `storage_url` points to the screenshot
 path and `sha256_hash` stores the manifest hash.
 
+## Scheduled Captures
+
+Active monitors can be captured by calling the server-owned cron endpoint:
+
+```bash
+curl -X POST http://localhost:3000/api/cron/capture-due \
+  -H "Authorization: Bearer your-cron-secret"
+```
+
+The endpoint requires `CRON_SECRET` and should be invoked by an external
+scheduler in production. It selects active monitors where `next_capture_at` is
+due, respects each monitor frequency (`hourly`, `daily`, `weekly`), sets a
+short capture lock to reduce duplicate work, and reuses the same capture service
+as the manual `Capture Now` action. Each run processes up to 5 monitors by
+default and accepts `?limit=1..10`.
+
+Scheduled captures require a server environment that can run Playwright
+Chromium. Keep the `captures` bucket private; scheduled captures store the same
+screenshot and HTML artifacts as manual captures.
+
 ## Integrity Verification
 
 Capture detail pages let authenticated users inspect stored metadata and run an
@@ -171,14 +192,29 @@ replace legal chain-of-custody procedures, or act as an external timestamp
 authority. Screenshot previews use short-lived signed URLs; the underlying
 `captures` bucket should remain private.
 
+## PDF Evidence Reports
+
+Capture detail pages include an `Export PDF Report` action. Reports are generated
+from stored capture data and stored artifacts; the export does not recapture the
+target website. Each report includes capture metadata, original and final URLs,
+artifact paths, screenshot/HTML/manifest hashes, a verification result, selected
+HTTP response metadata, and an honest limitations section.
+
+If the private screenshot artifact can be downloaded server-side, the report
+embeds a scaled screenshot preview. If embedding fails, the PDF still downloads
+and records that the screenshot could not be included. The report is an evidence
+preservation summary and does not automatically establish court admissibility or
+replace formal chain-of-custody procedures.
+
 ## Server Role Usage Note
 
 Normal user-scoped monitor and capture listing routes should use the
 authenticated Supabase client so PostgreSQL RLS remains active. The service role
-client is reserved for server-only artifact work after ownership has already
-been verified, such as uploading screenshots and HTML during capture, generating
-short-lived screenshot signed URLs for owned captures, and downloading stored
-artifacts during integrity verification.
+client is reserved for server-only artifact and scheduled runner work after
+ownership or cron-secret authorization has already been verified, such as
+uploading screenshots and HTML during capture, selecting due monitors for cron,
+generating short-lived screenshot signed URLs for owned captures, and
+downloading stored artifacts during integrity verification.
 
 ## Database Schema Overview
 

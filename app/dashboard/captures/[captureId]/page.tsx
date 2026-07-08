@@ -120,6 +120,7 @@ export default function CaptureDetailPage() {
     useState<VerificationResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [verifying, setVerifying] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [error, setError] = useState('');
 
   const fetchCapture = useCallback(async () => {
@@ -204,6 +205,55 @@ export default function CaptureDetailPage() {
       );
     } finally {
       setVerifying(false);
+    }
+  }
+
+  async function exportPdfReport() {
+    setExporting(true);
+    setError('');
+
+    try {
+      const token = await getAccessToken();
+
+      if (!token) {
+        setError('Authentication required.');
+        return;
+      }
+
+      const response = await fetch(
+        `/api/captures/${captureId}/report`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const result = await response.json();
+        throw new Error(
+          result.message ||
+            'PDF export failed.'
+        );
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `veritasweb-capture-${captureId}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (exportError) {
+      setError(
+        exportError instanceof Error
+          ? exportError.message
+          : 'PDF export failed.'
+      );
+    } finally {
+      setExporting(false);
     }
   }
 
@@ -353,6 +403,16 @@ export default function CaptureDetailPage() {
                   {verifying
                     ? 'Verifying...'
                     : 'Verify Integrity'}
+                </Button>
+                <Button
+                  onClick={exportPdfReport}
+                  disabled={exporting}
+                  variant="outline"
+                  className="ml-2 border-slate-600 bg-slate-700 text-white hover:bg-slate-600"
+                >
+                  {exporting
+                    ? 'Exporting...'
+                    : 'Export PDF Report'}
                 </Button>
 
                 {verification && (

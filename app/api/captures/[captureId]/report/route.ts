@@ -9,21 +9,19 @@ import {
 import {
   fetchOwnedCaptureById,
 } from '@/lib/captures';
+import { generateCaptureReportPdf } from '@/lib/pdf-report';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import {
   isMissingSupabaseEnvError,
   missingSupabaseEnvResponse,
 } from '@/lib/supabase/env';
-import {
-  serializeVerificationResult,
-  verifyCaptureArtifacts,
-} from '@/lib/verification';
+import { verifyCaptureArtifacts } from '@/lib/verification';
 
 const paramsSchema = z.object({
   captureId: z.string().uuid(),
 });
 
-export async function POST(
+export async function GET(
   request: NextRequest,
   context: {
     params: Promise<{ captureId: string }>;
@@ -49,7 +47,7 @@ export async function POST(
       );
 
     if (error) {
-      console.error('[capture:verify:fetch]', error);
+      console.error('[capture:report:fetch]', error);
 
       return apiErrorResponse(
         'INTERNAL_ERROR',
@@ -67,14 +65,23 @@ export async function POST(
     }
 
     const supabaseAdmin = getSupabaseAdmin();
-    const result = await verifyCaptureArtifacts(
+    const verification = await verifyCaptureArtifacts(
       capture,
       supabaseAdmin
     );
 
-    return NextResponse.json({
-      success: true,
-      data: serializeVerificationResult(result),
+    const pdfBuffer = generateCaptureReportPdf({
+      capture,
+      verification,
+      generatedAt: new Date().toISOString(),
+    });
+
+    return new NextResponse(pdfBuffer, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="veritasweb-capture-${captureId}.pdf"`,
+      },
     });
   } catch (error) {
     if (isMissingSupabaseEnvError(error)) {
@@ -89,7 +96,7 @@ export async function POST(
       );
     }
 
-    console.error('[capture:verify]', error);
+    console.error('[capture:report]', error);
 
     return apiErrorResponse(
       'INTERNAL_ERROR',
