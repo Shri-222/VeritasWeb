@@ -157,13 +157,28 @@ hashes, URL metadata, status code, headers, capture timestamp, and previous
 capture hash. For backward compatibility, `storage_url` points to the screenshot
 path and `sha256_hash` stores the manifest hash.
 
+## Integrity Verification
+
+Capture detail pages let authenticated users inspect stored metadata and run an
+integrity verification check. Verification downloads the private screenshot and
+HTML artifacts server-side, recomputes their SHA-256 hashes, rebuilds the same
+deterministic evidence manifest, and compares the computed hashes with the
+stored database values.
+
+Verification confirms that the stored artifacts still match the stored hashes
+and manifest metadata. It does not automatically guarantee court admissibility,
+replace legal chain-of-custody procedures, or act as an external timestamp
+authority. Screenshot previews use short-lived signed URLs; the underlying
+`captures` bucket should remain private.
+
 ## Server Role Usage Note
 
 Normal user-scoped monitor and capture listing routes should use the
 authenticated Supabase client so PostgreSQL RLS remains active. The service role
-client is reserved for server-only capture pipeline work, such as uploading
-screenshots to the private `captures` bucket and inserting server-generated
-capture records after monitor ownership has already been verified.
+client is reserved for server-only artifact work after ownership has already
+been verified, such as uploading screenshots and HTML during capture, generating
+short-lived screenshot signed URLs for owned captures, and downloading stored
+artifacts during integrity verification.
 
 ## Database Schema Overview
 

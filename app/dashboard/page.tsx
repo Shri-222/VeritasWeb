@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -410,20 +411,28 @@ export default function HomePage() {
                       </p>
                     </div>
                     <div className="flex items-start">
-                      {capture.screenshot_signed_url ? (
-                        <a
-                          href={capture.screenshot_signed_url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="rounded-md border border-slate-600 bg-slate-700 px-3 py-2 text-sm text-white hover:bg-slate-600"
+                      <div className="flex flex-col gap-2">
+                        <Link
+                          href={`/dashboard/captures/${capture.id}`}
+                          className="rounded-md border border-cyan-500 bg-cyan-500 px-3 py-2 text-center text-sm text-white hover:bg-cyan-600"
                         >
-                          Open Screenshot
-                        </a>
-                      ) : (
-                        <span className="text-sm text-slate-400">
-                          Screenshot stored
-                        </span>
-                      )}
+                          View Details
+                        </Link>
+                        {capture.screenshot_signed_url ? (
+                          <a
+                            href={capture.screenshot_signed_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="rounded-md border border-slate-600 bg-slate-700 px-3 py-2 text-center text-sm text-white hover:bg-slate-600"
+                          >
+                            Open Screenshot
+                          </a>
+                        ) : (
+                          <span className="text-sm text-slate-400">
+                            Screenshot stored
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </CardContent>

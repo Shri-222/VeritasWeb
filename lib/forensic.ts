@@ -35,6 +35,30 @@ export type EvidenceManifest = EvidenceManifestInput & {
   hash_algorithm: 'sha256';
 };
 
+export type EvidenceIntegrityStatus =
+  | 'VERIFIED'
+  | 'FAILED';
+
+export type EvidenceHashCheck = {
+  stored: string | null;
+  computed: string;
+  match: boolean;
+};
+
+export type VerifyEvidenceIntegrityInput = {
+  screenshotContent: Buffer;
+  htmlContent: string | Buffer;
+  manifestInput: Omit<
+    EvidenceManifestInput,
+    'screenshot_sha256' | 'html_sha256'
+  >;
+  stored: {
+    screenshot_sha256: string | null;
+    html_sha256: string | null;
+    manifest_sha256: string | null;
+  };
+};
+
 /**
  * Calculate SHA-256 hash of content for forensic verification
  * @param content - The content to hash (string or buffer)
@@ -122,6 +146,77 @@ export async function createEvidenceManifestWithHash(
   return {
     manifest,
     manifestHash,
+  };
+}
+
+export async function calculateEvidenceManifestHash(
+  input: EvidenceManifestInput
+) {
+  const { manifestHash } =
+    await createEvidenceManifestWithHash(input);
+
+  return manifestHash;
+}
+
+export async function verifyEvidenceIntegrity(
+  input: VerifyEvidenceIntegrityInput
+) {
+  const screenshotSha256 =
+    await calculateSHA256Hash(input.screenshotContent);
+
+  const htmlSha256 = await calculateSHA256Hash(
+    input.htmlContent
+  );
+
+  const manifestSha256 =
+    await calculateEvidenceManifestHash({
+      ...input.manifestInput,
+      screenshot_sha256: screenshotSha256,
+      html_sha256: htmlSha256,
+    });
+
+  const checks = {
+    screenshot: {
+      stored: input.stored.screenshot_sha256,
+      computed: screenshotSha256,
+      match:
+        input.stored.screenshot_sha256 ===
+        screenshotSha256,
+    },
+    html: {
+      stored: input.stored.html_sha256,
+      computed: htmlSha256,
+      match:
+        input.stored.html_sha256 === htmlSha256,
+    },
+    manifest: {
+      stored: input.stored.manifest_sha256,
+      computed: manifestSha256,
+      match:
+        input.stored.manifest_sha256 ===
+        manifestSha256,
+    },
+  } satisfies Record<string, EvidenceHashCheck>;
+
+  const verified =
+    checks.screenshot.match &&
+    checks.html.match &&
+    checks.manifest.match;
+
+  return {
+    verified,
+    status: verified
+      ? 'VERIFIED'
+      : 'FAILED',
+    checks,
+    message: verified
+      ? 'Capture integrity verified.'
+      : 'Capture integrity verification failed.',
+  } satisfies {
+    verified: boolean;
+    status: EvidenceIntegrityStatus;
+    checks: typeof checks;
+    message: string;
   };
 }
 
