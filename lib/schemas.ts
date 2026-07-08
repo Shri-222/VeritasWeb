@@ -33,7 +33,7 @@ const MAX_COOKIE_VALUE_LENGTH = 4000;
  * - loopback
  * - internal hostnames
  */
-function isSafePublicUrl(value: string): boolean {
+export function isSafePublicUrl(value: string): boolean {
   try {
     const url = new URL(value);
 
@@ -42,13 +42,17 @@ function isSafePublicUrl(value: string): boolean {
       return false;
     }
 
-    const hostname = url.hostname.toLowerCase();
+    const hostname = url.hostname
+      .toLowerCase()
+      .replace(/^\[/, '')
+      .replace(/\]$/, '');
 
     // Block localhost
     if (
       hostname === 'localhost' ||
       hostname === '127.0.0.1' ||
-      hostname === '0.0.0.0'
+      hostname === '0.0.0.0' ||
+      hostname === '::1'
     ) {
       return false;
     }
@@ -74,6 +78,15 @@ function isSafePublicUrl(value: string): boolean {
       privateIpPatterns.some((pattern) =>
         pattern.test(hostname)
       )
+    ) {
+      return false;
+    }
+
+    if (
+      hostname.includes(':') &&
+      (hostname.startsWith('fc') ||
+        hostname.startsWith('fd') ||
+        hostname.startsWith('fe80:'))
     ) {
       return false;
     }

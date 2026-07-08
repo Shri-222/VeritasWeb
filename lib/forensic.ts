@@ -6,6 +6,34 @@
  */
 
 import crypto from 'crypto';
+import type { Json } from '@/types/database';
+
+type StableJson =
+  | string
+  | number
+  | boolean
+  | null
+  | StableJson[]
+  | { [key: string]: StableJson };
+
+export type EvidenceManifestInput = {
+  original_url: string;
+  final_url: string;
+  page_title: string | null;
+  captured_at: string;
+  status_code: number;
+  headers: Record<string, string>;
+  screenshot_path: string;
+  html_path: string;
+  screenshot_sha256: string;
+  html_sha256: string;
+  previous_capture_hash: string | null;
+};
+
+export type EvidenceManifest = EvidenceManifestInput & {
+  schema_version: 'veritasweb.capture.v1';
+  hash_algorithm: 'sha256';
+};
 
 /**
  * Calculate SHA-256 hash of content for forensic verification
@@ -16,6 +44,102 @@ export async function calculateSHA256Hash(content: string | Buffer): Promise<str
   const data = typeof content === 'string' ? Buffer.from(content, 'utf-8') : content;
   const hash = crypto.createHash('sha256').update(data).digest('hex');
   return hash;
+}
+
+function normalizeForStableJson(value: unknown): StableJson {
+  if (value === undefined || value === null) {
+    return null;
+  }
+
+  if (
+    typeof value === 'string' ||
+    typeof value === 'number' ||
+    typeof value === 'boolean'
+  ) {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) =>
+      normalizeForStableJson(item)
+    );
+  }
+
+  if (typeof value === 'object') {
+    return Object.keys(value)
+      .sort()
+      .reduce<Record<string, StableJson>>(
+        (result, key) => {
+          result[key] = normalizeForStableJson(
+            (value as Record<string, unknown>)[key]
+          );
+          return result;
+        },
+        {}
+      );
+  }
+
+  return null;
+}
+
+export function stableStringify(value: unknown) {
+  return JSON.stringify(normalizeForStableJson(value));
+}
+
+export function createEvidenceManifest(
+  input: EvidenceManifestInput
+): EvidenceManifest {
+  return {
+    schema_version: 'veritasweb.capture.v1',
+    hash_algorithm: 'sha256',
+    original_url: input.original_url,
+    final_url: input.final_url,
+    page_title: input.page_title ?? null,
+    captured_at: input.captured_at,
+    status_code: input.status_code,
+    headers: normalizeHeaders(input.headers),
+    screenshot_path: input.screenshot_path,
+    html_path: input.html_path,
+    screenshot_sha256: input.screenshot_sha256,
+    html_sha256: input.html_sha256,
+    previous_capture_hash:
+      input.previous_capture_hash ?? null,
+  };
+}
+
+export async function calculateManifestHash(
+  manifest: EvidenceManifest
+) {
+  return calculateSHA256Hash(stableStringify(manifest));
+}
+
+export async function createEvidenceManifestWithHash(
+  input: EvidenceManifestInput
+) {
+  const manifest = createEvidenceManifest(input);
+  const manifestHash = await calculateManifestHash(manifest);
+
+  return {
+    manifest,
+    manifestHash,
+  };
+}
+
+export function normalizeHeaders(
+  headers: Record<string, string>
+) {
+  return Object.keys(headers)
+    .sort()
+    .reduce<Record<string, string>>((result, key) => {
+      result[key.toLowerCase()] = headers[key];
+      return result;
+    }, {});
+}
+
+export function jsonFromManifest(
+  manifest: EvidenceManifest
+): Json {
+  return normalizeForStableJson(manifest) as Json;
 }
 
 /**

@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { captureWebsite } from "@/lib/capture";
-import { calculateSHA256Hash, generateForensicMetadata } from "@/lib/forensic";
+import {
+  calculateSHA256Hash,
+  createEvidenceManifestWithHash,
+} from "@/lib/forensic";
 import {
   apiErrorResponse,
   authenticateApiRequest,
 } from "@/lib/auth";
+import { safeUrlSchema } from "@/lib/schemas";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   isMissingSupabaseEnvError,
@@ -55,62 +59,117 @@ export async function POST(
       );
     }
 
+    const safeUrl = safeUrlSchema.safeParse(monitor.url);
+
+    if (!safeUrl.success) {
+      return apiErrorResponse(
+        "UNSAFE_URL",
+        "Monitor URL is not safe to capture.",
+        400,
+      );
+    }
+
     const supabaseAdmin = getSupabaseAdmin();
-
-    // Capture website
-
-    const result = await captureWebsite(monitor.url);
-
-    // Generate hash
-
-    const screenshotHash = await calculateSHA256Hash(result.screenshot);
-
-    const forensicMetadata = generateForensicMetadata(
-      screenshotHash,
-      result.statusCode,
-    );
-
-    // Get previous capture
 
     const { data: previousCapture } = await supabaseAdmin
       .from("captures")
-      .select("sha256_hash")
+      .select("sha256_hash, manifest_sha256")
       .eq("monitor_id", monitorId)
-      .order("created_at", {
+      .order("captured_at", {
+        ascending: false,
+      })
+      .order("timestamp", {
         ascending: false,
       })
       .limit(1)
       .maybeSingle();
 
-    // Upload screenshot
+    const previousCaptureHash =
+      previousCapture?.manifest_sha256 ??
+      previousCapture?.sha256_hash ??
+      null;
 
-    const fileName = `${monitorId}/${Date.now()}.png`;
+    const result = await captureWebsite(safeUrl.data);
 
-    const { data: uploadedFile, error: uploadError } =
+    const screenshotSha256 = await calculateSHA256Hash(
+      result.screenshotBuffer,
+    );
+
+    const htmlSha256 = await calculateSHA256Hash(
+      result.html,
+    );
+
+    const pathTimestamp = result.capturedAt.replace(
+      /[:.]/g,
+      "-",
+    );
+
+    const screenshotPath = `${auth.user.id}/${monitorId}/${pathTimestamp}/screenshot.png`;
+    const htmlPath = `${auth.user.id}/${monitorId}/${pathTimestamp}/page.html`;
+
+    const { manifestHash } =
+      await createEvidenceManifestWithHash({
+        original_url: result.originalUrl,
+        final_url: result.finalUrl,
+        page_title: result.title || null,
+        captured_at: result.capturedAt,
+        status_code: result.statusCode,
+        headers: result.headers,
+        screenshot_path: screenshotPath,
+        html_path: htmlPath,
+        screenshot_sha256: screenshotSha256,
+        html_sha256: htmlSha256,
+        previous_capture_hash: previousCaptureHash,
+      });
+
+    const { error: screenshotUploadError } =
       await supabaseAdmin.storage
         .from("captures")
-        .upload(fileName, result.screenshot, {
+        .upload(screenshotPath, result.screenshotBuffer, {
           cacheControl: "3600",
           upsert: false,
           contentType: "image/png",
         });
 
-    if (uploadError) {
-      throw uploadError;
+    if (screenshotUploadError) {
+      throw screenshotUploadError;
     }
 
-    // Save capture record
+    const { error: htmlUploadError } =
+      await supabaseAdmin.storage
+        .from("captures")
+        .upload(htmlPath, Buffer.from(result.html, "utf-8"), {
+          cacheControl: "3600",
+          upsert: false,
+          contentType: "text/html; charset=utf-8",
+        });
+
+    if (htmlUploadError) {
+      throw htmlUploadError;
+    }
 
     const { data: captureRecord, error: captureError } = await supabaseAdmin
       .from("captures")
       .insert({
         monitor_id: monitorId,
-        storage_url: uploadedFile.path,
-        sha256_hash: screenshotHash,
+        timestamp: result.capturedAt,
+        storage_url: screenshotPath,
+        sha256_hash: manifestHash,
         tsa_token: null,
         status_code: result.statusCode,
         headers: result.headers ?? {},
-        previous_capture_hash: previousCapture?.sha256_hash ?? null,
+        previous_capture_hash: previousCaptureHash,
+        screenshot_path: screenshotPath,
+        html_path: htmlPath,
+        screenshot_sha256: screenshotSha256,
+        html_sha256: htmlSha256,
+        manifest_sha256: manifestHash,
+        original_url: result.originalUrl,
+        final_url: result.finalUrl,
+        page_title: result.title,
+        captured_at: result.capturedAt,
+        capture_status: "success",
+        error_message: null,
       })
       .select()
       .single();
@@ -122,8 +181,17 @@ export async function POST(
     return NextResponse.json({
       success: true,
       data: {
-        capture: captureRecord,
-        forensicMetadata,
+        captureId: captureRecord.id,
+        monitorId,
+        screenshotPath,
+        htmlPath,
+        manifestSha256: manifestHash,
+        screenshotSha256,
+        htmlSha256,
+        statusCode: result.statusCode,
+        pageTitle: result.title,
+        finalUrl: result.finalUrl,
+        capturedAt: result.capturedAt,
       },
     });
   } catch (error) {

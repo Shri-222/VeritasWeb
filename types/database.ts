@@ -103,6 +103,17 @@ export type Database = {
             status_code: number;
             headers: Json;
             previous_capture_hash: string | null;
+            screenshot_path: string | null;
+            html_path: string | null;
+            screenshot_sha256: string | null;
+            html_sha256: string | null;
+            manifest_sha256: string | null;
+            original_url: string | null;
+            final_url: string | null;
+            page_title: string | null;
+            captured_at: string;
+            capture_status: string;
+            error_message: string | null;
             created_at: string;
         };
 
@@ -116,6 +127,17 @@ export type Database = {
             status_code: number;
             headers?: Json;
             previous_capture_hash?: string | null;
+            screenshot_path?: string | null;
+            html_path?: string | null;
+            screenshot_sha256?: string | null;
+            html_sha256?: string | null;
+            manifest_sha256?: string | null;
+            original_url?: string | null;
+            final_url?: string | null;
+            page_title?: string | null;
+            captured_at?: string;
+            capture_status?: string;
+            error_message?: string | null;
             created_at?: string;
         };
 
@@ -129,6 +151,17 @@ export type Database = {
             status_code?: number;
             headers?: Json;
             previous_capture_hash?: string | null;
+            screenshot_path?: string | null;
+            html_path?: string | null;
+            screenshot_sha256?: string | null;
+            html_sha256?: string | null;
+            manifest_sha256?: string | null;
+            original_url?: string | null;
+            final_url?: string | null;
+            page_title?: string | null;
+            captured_at?: string;
+            capture_status?: string;
+            error_message?: string | null;
             created_at?: string;
         };
 

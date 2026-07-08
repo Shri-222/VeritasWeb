@@ -165,8 +165,19 @@ export async function GET(
         id,
         monitor_id,
         timestamp,
+        captured_at,
         storage_url,
         sha256_hash,
+        screenshot_path,
+        html_path,
+        screenshot_sha256,
+        html_sha256,
+        manifest_sha256,
+        original_url,
+        final_url,
+        page_title,
+        capture_status,
+        error_message,
         tsa_token,
         status_code,
         headers,
@@ -186,6 +197,9 @@ export async function GET(
         'monitors.user_id',
         auth.user.id
       )
+      .order('captured_at', {
+        ascending: false,
+      })
       .order('timestamp', {
         ascending: false,
       });
@@ -203,14 +217,14 @@ export async function GET(
 
     if (filters.start_date) {
       query = query.gte(
-        'timestamp',
+        'captured_at',
         filters.start_date
       );
     }
 
     if (filters.end_date) {
       query = query.lte(
-        'timestamp',
+        'captured_at',
         filters.end_date
       );
     }
@@ -249,13 +263,68 @@ export async function GET(
       );
     }
 
+    const captures = await Promise.all(
+      (data ?? []).map(async (capture) => {
+        const screenshotPath =
+          capture.screenshot_path ??
+          capture.storage_url ??
+          null;
+
+        let screenshotSignedUrl: string | null = null;
+
+        if (screenshotPath) {
+          const { data: signedUrlData } =
+            await auth.supabase.storage
+              .from('captures')
+              .createSignedUrl(
+                screenshotPath,
+                60 * 10
+              );
+
+          screenshotSignedUrl =
+            signedUrlData?.signedUrl ?? null;
+        }
+
+        const monitor = Array.isArray(capture.monitors)
+          ? capture.monitors[0]
+          : capture.monitors;
+
+        return {
+          id: capture.id,
+          monitor_id: capture.monitor_id,
+          monitor_url: monitor?.url ?? null,
+          timestamp: capture.timestamp,
+          captured_at:
+            capture.captured_at ?? capture.timestamp,
+          original_url: capture.original_url,
+          final_url: capture.final_url,
+          page_title: capture.page_title,
+          status_code: capture.status_code,
+          screenshot_path: screenshotPath,
+          screenshot_signed_url: screenshotSignedUrl,
+          html_path: capture.html_path,
+          screenshot_sha256:
+            capture.screenshot_sha256,
+          html_sha256: capture.html_sha256,
+          manifest_sha256:
+            capture.manifest_sha256 ??
+            capture.sha256_hash,
+          previous_capture_hash:
+            capture.previous_capture_hash,
+          capture_status: capture.capture_status,
+          error_message: capture.error_message,
+          created_at: capture.created_at,
+        };
+      })
+    );
+
     // ---------------------------------------------
     // Success
     // ---------------------------------------------
 
     return NextResponse.json({
       success: true,
-      data,
+      data: captures,
 
       pagination: {
         total: count ?? 0,

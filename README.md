@@ -14,13 +14,13 @@
 
 Web content is ephemeral, dynamic, and fragile. Traditional methods of preserving digital evidence—such as simple screenshots or basic browser "Print to PDF" utilities—are completely inadequate for legal disputes, regulatory audits, or forensic investigations. They lack verifiable metadata, fail to maintain a chain of custody, and are highly vulnerable to client-side DOM manipulation or digital tampering.
 
-**VeritasWeb** is a production-grade LegalTech platform engineered to programmatically capture, preserve, verify, and manage web-based evidence. By generating immutable cryptographic hashes and securing rich metadata immediately at the point of capture, VeritasWeb establishes a legally defensible record of online content that retains its integrity even if the original target website changes or disappears entirely.
+**VeritasWeb** is a forensic-style LegalTech MVP for programmatically capturing, preserving, and reviewing web-based evidence records. By generating cryptographic hashes and storing capture metadata at the point of capture, VeritasWeb helps create an evidence preservation record that can be reviewed even if the original target website changes or disappears.
 
 ### The Problem it Solves
 Manual screenshots lack an audit trail and cannot mathematically prove that an asset wasn't altered post-capture. VeritasWeb automates this process entirely, binding headless browser automation output directly to cryptographic proofs to prevent evidence repudiation.
 
 ### Who it is For
-* **Lawyers & Law Firms:** To preserve bulletproof evidence of online defamation, patent/trademark infringement, and public declarations.
+* **Lawyers & Law Firms:** To preserve structured records of online defamation, patent/trademark infringement, and public declarations.
 * **Compliance & Risk Teams:** To build unalterable, automated historical logs of pricing structures, terms of service updates, or regulatory disclosures.
 * **Journalists & Investigators:** To establish permanent, timestamped records of investigative sources and web-based stories before deletion.
 * **Digital Forensics Professionals:** To acquire pristine, isolated captures containing raw HTTP responses, status codes, and full-page rendering structures.
@@ -139,6 +139,23 @@ For MVP safety, configure this bucket as private. Screenshots should not be
 publicly readable unless a later signed URL flow is implemented. Storage
 policies should prevent users from reading screenshots for monitors they do not
 own.
+Create the `captures` bucket before running manual captures. The Phase 3 capture
+pipeline stores both `screenshot.png` and `page.html` artifacts under a
+user/monitor/timestamp object path.
+
+## Capture Pipeline
+
+Authenticated users can create a monitor and trigger `Capture Now` from the
+dashboard. The server revalidates monitor ownership, rechecks the URL for basic
+SSRF safety, launches Playwright Chromium, captures a full-page screenshot and
+raw HTML, uploads both artifacts to the private `captures` bucket, and inserts
+metadata into PostgreSQL.
+
+Each Phase 3 capture stores separate SHA-256 hashes for the screenshot and HTML.
+It also stores a deterministic manifest hash over the artifact paths, artifact
+hashes, URL metadata, status code, headers, capture timestamp, and previous
+capture hash. For backward compatibility, `storage_url` points to the screenshot
+path and `sha256_hash` stores the manifest hash.
 
 ## Server Role Usage Note
 

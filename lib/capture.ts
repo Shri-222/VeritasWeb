@@ -1,6 +1,14 @@
 import { chromium } from 'playwright';
 
+export class CaptureWebsiteError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'CaptureWebsiteError';
+  }
+}
+
 export async function captureWebsite(url: string) {
+  const capturedAt = new Date().toISOString();
   const browser = await chromium.launch({
     headless: true,
   });
@@ -13,20 +21,38 @@ export async function captureWebsite(url: string) {
       },
     });
 
-    const response = await page.goto(url, {
-      waitUntil: 'domcontentloaded',
-      timeout: 60000,
-    });
+    const response = await page
+      .goto(url, {
+        waitUntil: 'domcontentloaded',
+        timeout: 60000,
+      })
+      .catch((error: unknown) => {
+        throw new CaptureWebsiteError(
+          error instanceof Error
+            ? error.message
+            : 'Navigation failed'
+        );
+      });
 
-    await page.waitForLoadState('load');
+    if (!response) {
+      throw new CaptureWebsiteError(
+        'Navigation did not return a response'
+      );
+    }
+
+    await page
+      .waitForLoadState('load', {
+        timeout: 10000,
+      })
+      .catch(() => undefined);
 
     await page.waitForTimeout(3000);
 
-    const statusCode = response?.status() ?? 200;
+    const statusCode = response.status();
 
     const html = await page.content();
 
-    const screenshot = await page.screenshot({
+    const screenshotBuffer = await page.screenshot({
       fullPage: true,
       type: 'png',
     });
@@ -38,12 +64,14 @@ export async function captureWebsite(url: string) {
     const finalUrl = page.url();
 
     return {
+      originalUrl: url,
       html,
-      screenshot,
+      screenshotBuffer,
       title,
       finalUrl,
       statusCode,
       headers,
+      capturedAt,
     };
   } finally {
     await browser.close();
