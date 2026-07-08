@@ -6,6 +6,9 @@
     "build": "next build",
     "dev": "next dev",
     "lint": "eslint .",
+    "postinstall:playwright": "playwright install chromium",
+    "test": "echo \"No tests configured yet\"",
+    "typecheck": "tsc --noEmit",
     "start": "next start"
   },
   "dependencies": {
@@ -65,9 +68,12 @@
     "zod": "3.25.76"
   },
   "devDependencies": {
+    "@eslint/eslintrc": "^3.3.1",
     "@types/node": "^22",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "eslint": "^9.18.0",
+    "eslint-config-next": "15.2.6",
     "postcss": "^8.5",
     "tailwindcss": "^3.4.17",
     "typescript": "^5"

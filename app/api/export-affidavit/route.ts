@@ -6,7 +6,11 @@
 export const runtime = 'nodejs';
 
 import { jsPDF } from 'jspdf';
-import { supabaseAdmin } from '@/lib/supabase/admin';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import {
+  isMissingSupabaseEnvError,
+  missingSupabaseEnvResponse,
+} from '@/lib/supabase/env';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 
@@ -60,6 +64,7 @@ async function getUserId(request: NextRequest): Promise<string | null> {
   }
 
   const token = authHeader.substring(7);
+  const supabaseAdmin = getSupabaseAdmin();
 
   const { data, error } = await supabaseAdmin.auth.getUser(token);
 
@@ -76,6 +81,7 @@ async function getUserId(request: NextRequest): Promise<string | null> {
 
 export async function POST(request: NextRequest) {
   try {
+    const supabaseAdmin = getSupabaseAdmin();
     // --------------------------------------------
     // Authenticate User
     // --------------------------------------------
@@ -310,6 +316,10 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
+    if (isMissingSupabaseEnvError(error)) {
+      return missingSupabaseEnvResponse();
+    }
+
     console.error('Export Affidavit Error:', error);
 
     if (error instanceof z.ZodError) {

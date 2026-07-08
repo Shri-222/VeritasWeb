@@ -17,8 +17,6 @@ export default function HomePage() {
   const [url, setUrl] = useState('');
   const [frequency, setFrequency] = useState('daily');
 
-  const supabase = createClient();
-
   const handleCreateMonitor = async () => {
     if (!url) {
       alert('Please enter a URL');
@@ -27,6 +25,7 @@ export default function HomePage() {
 
     setIsLoading(true);
     try {
+      const supabase = createClient();
 
       const {
           data: { session },
@@ -66,6 +65,8 @@ export default function HomePage() {
 
   const fetchMonitors = async () => {
     try {
+      const supabase = createClient();
+
       const {
         data: { session },
       } = await supabase.auth.getSession();

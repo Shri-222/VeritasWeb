@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { captureWebsite } from "@/lib/capture";
 import { calculateSHA256Hash, generateForensicMetadata } from "@/lib/forensic";
-import { supabaseAdmin } from "@/lib/supabase/admin";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import {
+  isMissingSupabaseEnvError,
+  missingSupabaseEnvResponse,
+} from "@/lib/supabase/env";
 
 export async function POST(
   request: NextRequest,
 ) {
   try {
+  const supabaseAdmin = getSupabaseAdmin();
   const body = await request.json();
 
   const { monitorId } = body;
@@ -97,6 +102,10 @@ export async function POST(
       forensicMetadata,
     });
   } catch (error) {
+    if (isMissingSupabaseEnvError(error)) {
+      return missingSupabaseEnvResponse();
+    }
+
     console.error("[capture-now]", error);
 
     return NextResponse.json(

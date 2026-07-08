@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
+import {
+  isMissingSupabaseEnvError,
+  missingSupabaseEnvResponse,
+} from '@/lib/supabase/env';
 
 const registerSchema = z.object({
   email: z.string().email(),
@@ -48,6 +52,10 @@ export async function POST(request: NextRequest) {
       }
     );
   } catch (error) {
+    if (isMissingSupabaseEnvError(error)) {
+      return missingSupabaseEnvResponse();
+    }
+
     if (error instanceof z.ZodError) {
       return NextResponse.json(
         {

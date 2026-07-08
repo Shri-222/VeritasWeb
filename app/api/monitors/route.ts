@@ -6,8 +6,11 @@
  */
 
 import { createMonitorSchema } from '@/lib/schemas';
-import { supabaseAdmin } from '@/lib/supabase/admin';
-import type { Database } from '@/types/database';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import {
+  isMissingSupabaseEnvError,
+  missingSupabaseEnvResponse,
+} from '@/lib/supabase/env';
 import { NextRequest, NextResponse } from 'next/server';
 
 // Helper: Extract user ID from Authorization header
@@ -18,6 +21,7 @@ async function getUserId(request: NextRequest): Promise<string | null> {
   }
 
   const token = authHeader.substring(7);
+  const supabaseAdmin = getSupabaseAdmin();
   
   // Verify token with Supabase
   const { data, error } = await supabaseAdmin.auth.getUser(token);
@@ -30,6 +34,7 @@ async function getUserId(request: NextRequest): Promise<string | null> {
 
 export async function POST(request: NextRequest) {
   try {
+    const supabaseAdmin = getSupabaseAdmin();
     const userId = await getUserId(request);
     if (!userId) {
       return NextResponse.json(
@@ -78,6 +83,10 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(data[0], { status: 201 });
   } catch (err) {
+    if (isMissingSupabaseEnvError(err)) {
+      return missingSupabaseEnvResponse();
+    }
+
     if (err instanceof SyntaxError) {
       return NextResponse.json(
         { error: 'Invalid JSON' },
@@ -108,6 +117,7 @@ export async function POST(request: NextRequest) {
  */
 export async function GET(request: NextRequest) {
   try {
+    const supabaseAdmin = getSupabaseAdmin();
     const userId = await getUserId(request);
     if (!userId) {
       return NextResponse.json(
@@ -132,6 +142,10 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(data);
   } catch (err) {
+    if (isMissingSupabaseEnvError(err)) {
+      return missingSupabaseEnvResponse();
+    }
+
     console.error('[v0] Unexpected error:', err);
     return NextResponse.json(
       { error: 'Internal server error' },

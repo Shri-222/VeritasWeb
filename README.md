@@ -83,7 +83,8 @@ Follow these instructions to clone, configure, and execute an isolated developme
 
 ### Prerequisites
 * **Node.js:** Version `18.x.x` or higher
-* **Supabase Instance:** A localized running database instance or an active remote connection string URI (MongoDB Atlas)
+* **Package Manager:** npm
+* **Supabase Instance:** a Supabase project with PostgreSQL, Auth, and Storage enabled
 
 ### Setup Instructions
 
@@ -101,11 +102,13 @@ Follow these instructions to clone, configure, and execute an isolated developme
 3. **Install Playwright Headless Browser Core Binaries:**
    Download and configure the clean chromium environments required for isolation rendering:
    ```bash
-   npx playwright install chromium --with-deps
+   npx playwright install chromium
+   # or
+   npm run postinstall:playwright
    ```
 
 4. **Configure Local Environment Variables:**
-   Create a root-level .env.local or standard environment storage profile using the key structures detailed in the Environment Variables block.
+   Copy `.env.example` to `.env.local` and fill in the Supabase values. Keep `.env.local` uncommitted because it contains server-only secrets.
 
 5. **Initialize Platform Development Host Engine:**
    ```bash
@@ -122,7 +125,12 @@ Follow these instructions to clone, configure, and execute an isolated developme
 
    SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
    SUPABASE_JWT_SECRET=your-supabase-jwt-generated-secret-string-phrase
+
+   # Optional documentation value; the current capture API uses "captures".
+   SUPABASE_STORAGE_BUCKET=captures
    ```
+
+   `NEXT_PUBLIC_*` values are browser-safe Supabase project settings. `SUPABASE_SERVICE_ROLE_KEY` and `SUPABASE_JWT_SECRET` are server-only secrets and must never be exposed in client code or committed to git.
 
 ## Database Schema Overview
 

@@ -1,7 +1,10 @@
 import { cookies } from 'next/headers';
 import { createServerClient } from '@supabase/ssr';
+import { assertSupabasePublicEnv } from './env';
 
 export async function createClient() {
+  assertSupabasePublicEnv();
+
   const cookieStore = await cookies();
 
   return createServerClient(

@@ -14,7 +14,11 @@ import {
   captureFiltersSchema,
 } from '@/lib/schemas';
 
-import { supabaseAdmin } from '@/lib/supabase/admin';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import {
+  isMissingSupabaseEnvError,
+  missingSupabaseEnvResponse,
+} from '@/lib/supabase/env';
 
 import {
   generateInternalTimestampProof,
@@ -46,6 +50,7 @@ async function getUserId(
     }
 
     const token = authHeader.substring(7);
+    const supabaseAdmin = getSupabaseAdmin();
 
     const { data, error } =
       await supabaseAdmin.auth.getUser(token);
@@ -69,6 +74,7 @@ export async function POST(
   request: NextRequest
 ) {
   try {
+    const supabaseAdmin = getSupabaseAdmin();
     // ---------------------------------------------
     // Authentication
     // ---------------------------------------------
@@ -203,6 +209,10 @@ export async function POST(
       { status: 201 }
     );
   } catch (error) {
+    if (isMissingSupabaseEnvError(error)) {
+      return missingSupabaseEnvResponse();
+    }
+
     // ---------------------------------------------
     // Invalid JSON
     // ---------------------------------------------
@@ -256,6 +266,7 @@ export async function GET(
   request: NextRequest
 ) {
   try {
+    const supabaseAdmin = getSupabaseAdmin();
     // ---------------------------------------------
     // Authentication
     // ---------------------------------------------
@@ -413,6 +424,10 @@ export async function GET(
       },
     });
   } catch (error) {
+    if (isMissingSupabaseEnvError(error)) {
+      return missingSupabaseEnvResponse();
+    }
+
     // ---------------------------------------------
     // Validation Errors
     // ---------------------------------------------
