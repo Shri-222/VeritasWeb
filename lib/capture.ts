@@ -1,4 +1,8 @@
 import { chromium } from 'playwright';
+import { validateCaptureUrl } from '@/lib/schemas';
+
+export const UNSAFE_REDIRECT_MESSAGE =
+  'Capture blocked because the target URL redirected to a private or unsafe address.';
 
 export class CaptureWebsiteError extends Error {
   constructor(message: string) {
@@ -7,8 +11,25 @@ export class CaptureWebsiteError extends Error {
   }
 }
 
+export class UnsafeCaptureUrlError extends CaptureWebsiteError {
+  constructor(
+    message = UNSAFE_REDIRECT_MESSAGE
+  ) {
+    super(message);
+    this.name = 'UnsafeCaptureUrlError';
+  }
+}
+
 export async function captureWebsite(url: string) {
   const capturedAt = new Date().toISOString();
+  const initialUrl = await validateCaptureUrl(url);
+
+  if (!initialUrl.success) {
+    throw new UnsafeCaptureUrlError(
+      initialUrl.message
+    );
+  }
+
   const browser = await chromium.launch({
     headless: true,
   });
@@ -20,13 +41,41 @@ export async function captureWebsite(url: string) {
         height: 900,
       },
     });
+    let unsafeNavigationError: UnsafeCaptureUrlError | null =
+      null;
+
+    await page.route('**/*', async (route) => {
+      const request = route.request();
+
+      if (
+        request.isNavigationRequest() &&
+        request.frame() === page.mainFrame()
+      ) {
+        const targetUrl = request.url();
+        const safeTarget =
+          await validateCaptureUrl(targetUrl);
+
+        if (!safeTarget.success) {
+          unsafeNavigationError =
+            new UnsafeCaptureUrlError();
+          await route.abort('blockedbyclient');
+          return;
+        }
+      }
+
+      await route.continue();
+    });
 
     const response = await page
-      .goto(url, {
+      .goto(initialUrl.url, {
         waitUntil: 'domcontentloaded',
         timeout: 60000,
       })
       .catch((error: unknown) => {
+        if (unsafeNavigationError) {
+          throw unsafeNavigationError;
+        }
+
         throw new CaptureWebsiteError(
           error instanceof Error
             ? error.message
@@ -62,9 +111,14 @@ export async function captureWebsite(url: string) {
     const title = await page.title();
 
     const finalUrl = page.url();
+    const safeFinalUrl = await validateCaptureUrl(finalUrl);
+
+    if (!safeFinalUrl.success) {
+      throw new UnsafeCaptureUrlError();
+    }
 
     return {
-      originalUrl: url,
+      originalUrl: initialUrl.url,
       html,
       screenshotBuffer,
       title,

@@ -199,7 +199,16 @@ export type Database = {
 
     Views: {};
 
-    Functions: {};
+    Functions: {
+      increment_monitor_capture_success: {
+        Args: {
+          p_monitor_id: string;
+          p_captured_at: string;
+          p_next_capture_at: string;
+        };
+        Returns: undefined;
+      };
+    };
 
     Enums: {};
 

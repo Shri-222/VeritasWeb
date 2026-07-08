@@ -12,6 +12,7 @@ import {
   isMissingSupabaseEnvError,
   missingSupabaseEnvResponse,
 } from '@/lib/supabase/env';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import type { Database } from '@/types/database';
 
 const paramsSchema = z.object({
@@ -321,7 +322,7 @@ export async function DELETE(
       );
     }
 
-    const { error } = await result.auth.supabase
+    const { error } = await getSupabaseAdmin()
       .from('monitors')
       .delete()
       .eq('id', result.monitorId)

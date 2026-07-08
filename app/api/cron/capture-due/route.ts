@@ -142,6 +142,10 @@ export async function POST(request: NextRequest) {
           capture_lock_until: lockUntil.toISOString(),
         })
         .eq('id', monitor.id)
+        .eq('status', 'active')
+        .or(
+          `next_capture_at.is.null,next_capture_at.lte.${now}`
+        )
         .or(
           `capture_lock_until.is.null,capture_lock_until.lt.${now}`
         )

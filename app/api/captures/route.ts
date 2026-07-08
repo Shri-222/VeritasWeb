@@ -21,6 +21,8 @@ import {
   isMissingSupabaseEnvError,
   missingSupabaseEnvResponse,
 } from '@/lib/supabase/env';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import { getCaptureBucketName } from '@/lib/storage';
 
 import {
   NextRequest,
@@ -274,8 +276,8 @@ export async function GET(
 
         if (screenshotPath) {
           const { data: signedUrlData } =
-            await auth.supabase.storage
-              .from('captures')
+            await getSupabaseAdmin().storage
+              .from(getCaptureBucketName())
               .createSignedUrl(
                 screenshotPath,
                 60 * 10

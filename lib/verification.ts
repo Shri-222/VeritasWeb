@@ -8,6 +8,7 @@ import {
   getCaptureScreenshotPath,
   type OwnedCaptureRecord,
 } from '@/lib/captures';
+import { getCaptureBucketName } from '@/lib/storage';
 import type { Database, Json } from '@/types/database';
 
 export type VerificationStatus =
@@ -85,6 +86,7 @@ export async function verifyCaptureArtifacts(
 ): Promise<CaptureVerificationResult> {
   const screenshotPath = getCaptureScreenshotPath(capture);
   const manifestSha256 = getCaptureManifestHash(capture);
+  const bucketName = getCaptureBucketName();
 
   if (
     !screenshotPath ||
@@ -107,14 +109,14 @@ export async function verifyCaptureArtifacts(
     data: screenshotArtifact,
     error: screenshotError,
   } = await supabaseAdmin.storage
-    .from('captures')
+    .from(bucketName)
     .download(screenshotPath);
 
   const {
     data: htmlArtifact,
     error: htmlError,
   } = await supabaseAdmin.storage
-    .from('captures')
+    .from(bucketName)
     .download(capture.html_path);
 
   if (

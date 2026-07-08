@@ -1,10 +1,14 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { captureWebsite } from '@/lib/capture';
+import {
+  captureWebsite,
+  UnsafeCaptureUrlError,
+} from '@/lib/capture';
 import {
   calculateSHA256Hash,
   createEvidenceManifestWithHash,
 } from '@/lib/forensic';
 import { validateCaptureUrl } from '@/lib/schemas';
+import { getCaptureBucketName } from '@/lib/storage';
 import type { Database } from '@/types/database';
 
 export type CaptureTriggerType = 'manual' | 'scheduled';
@@ -89,6 +93,10 @@ function safeErrorMessage(error: unknown) {
     return error.safeMessage;
   }
 
+  if (error instanceof UnsafeCaptureUrlError) {
+    return error.message;
+  }
+
   return 'Capture failed.';
 }
 
@@ -119,6 +127,7 @@ export async function runMonitorCapture({
   supabaseAdmin,
 }: RunMonitorCaptureInput): Promise<RunMonitorCaptureResult> {
   try {
+    const bucketName = getCaptureBucketName();
     const safeUrl = await validateCaptureUrl(monitor.url);
 
     if (!safeUrl.success) {
@@ -183,7 +192,7 @@ export async function runMonitorCapture({
 
     const { error: screenshotUploadError } =
       await supabaseAdmin.storage
-        .from('captures')
+        .from(bucketName)
         .upload(screenshotPath, result.screenshotBuffer, {
           cacheControl: '3600',
           upsert: false,
@@ -196,7 +205,7 @@ export async function runMonitorCapture({
 
     const { error: htmlUploadError } =
       await supabaseAdmin.storage
-        .from('captures')
+        .from(bucketName)
         .upload(
           htmlPath,
           Buffer.from(result.html, 'utf-8'),
@@ -251,17 +260,14 @@ export async function runMonitorCapture({
     );
 
     const { error: monitorUpdateError } =
-      await supabaseAdmin
-        .from('monitors')
-        .update({
-          last_captured_at: result.capturedAt,
-          next_capture_at: nextCaptureAt,
-          last_capture_status: 'success',
-          last_capture_error: null,
-          capture_count: (monitor.capture_count ?? 0) + 1,
-          capture_lock_until: null,
-        })
-        .eq('id', monitor.id);
+      await supabaseAdmin.rpc(
+        'increment_monitor_capture_success',
+        {
+          p_monitor_id: monitor.id,
+          p_captured_at: result.capturedAt,
+          p_next_capture_at: nextCaptureAt,
+        }
+      );
 
     if (monitorUpdateError) {
       throw monitorUpdateError;
@@ -288,8 +294,17 @@ export async function runMonitorCapture({
       error
     );
 
-    if (error instanceof CaptureServiceError) {
-      throw error;
+    if (
+      error instanceof CaptureServiceError ||
+      error instanceof UnsafeCaptureUrlError
+    ) {
+      throw error instanceof CaptureServiceError
+        ? error
+        : new CaptureServiceError(
+            'UNSAFE_URL',
+            error.message,
+            400
+          );
     }
 
     console.error('[capture-service]', error);

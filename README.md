@@ -77,8 +77,10 @@ Run SQL scripts in order:
 2. `scripts/02-capture-pipeline-fields.sql`
 3. `scripts/03-scheduled-captures.sql`
 4. `scripts/04-final-hardening.sql`
+5. `scripts/05-security-hardening.sql`
 
 Create a private Storage bucket named `captures`. Stored screenshots and HTML files should not be public by default.
+Capture rows are server-created only; direct authenticated inserts into `captures` are intentionally blocked so evidence records cannot be forged through the browser client.
 
 ## Playwright Setup
 
@@ -135,6 +137,7 @@ Users can:
 - delete monitors only when they do not already have captures
 
 Monitors with evidence records are not hard-deleted from the dashboard/API; pause them instead.
+The database is also hardened so direct authenticated monitor deletes cannot cascade-delete stored capture records.
 
 ## Deployment
 
@@ -180,6 +183,7 @@ See [QA_CHECKLIST.md](QA_CHECKLIST.md) for manual test steps covering setup, cap
 - Capture results can vary due to cookies, geography, authentication state, scripts, A/B tests, bot detection, or dynamic content.
 - Playwright needs a server or container environment with Chromium support.
 - Stored artifacts are private by default and accessed through server-side checks or short-lived signed URLs for owners.
+- Capture artifacts are accessed from the configured `SUPABASE_STORAGE_BUCKET`, defaulting to `captures`.
 
 ## Roadmap
 
