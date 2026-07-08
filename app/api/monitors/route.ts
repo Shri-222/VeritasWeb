@@ -6,41 +6,24 @@
  */
 
 import { createMonitorSchema } from '@/lib/schemas';
-import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import {
+  apiErrorResponse,
+  authenticateApiRequest,
+} from '@/lib/auth';
 import {
   isMissingSupabaseEnvError,
   missingSupabaseEnvResponse,
 } from '@/lib/supabase/env';
 import { NextRequest, NextResponse } from 'next/server';
-
-// Helper: Extract user ID from Authorization header
-async function getUserId(request: NextRequest): Promise<string | null> {
-  const authHeader = request.headers.get('Authorization');
-  if (!authHeader?.startsWith('Bearer ')) {
-    return null;
-  }
-
-  const token = authHeader.substring(7);
-  const supabaseAdmin = getSupabaseAdmin();
-  
-  // Verify token with Supabase
-  const { data, error } = await supabaseAdmin.auth.getUser(token);
-  if (error || !data.user) {
-    return null;
-  }
-
-  return data.user.id;
-}
+import { z } from 'zod';
 
 export async function POST(request: NextRequest) {
   try {
-    const supabaseAdmin = getSupabaseAdmin();
-    const userId = await getUserId(request);
-    if (!userId) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+    const auth =
+      await authenticateApiRequest(request);
+
+    if (auth.errorResponse) {
+      return auth.errorResponse;
     }
 
     const body = await request.json();
@@ -51,12 +34,11 @@ export async function POST(request: NextRequest) {
     const normalizedUrl = new URL(
       validatedData.url
     ).toString();
-    // Insert monitor into database
-    // RLS will automatically enforce user_id isolation
-    const { data, error } = await supabaseAdmin
+
+    const { data, error } = await auth.supabase
       .from('monitors')
       .insert({
-      user_id: userId,
+      user_id: auth.user.id,
 
       url: validatedData.url,
 
@@ -75,36 +57,46 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       console.error('[v0] Supabase insert error:', error);
-      return NextResponse.json(
-        { error: 'Failed to create monitor' },
-        { status: 500 }
+      return apiErrorResponse(
+        'INTERNAL_ERROR',
+        'Failed to create monitor.',
+        500
       );
     }
 
-    return NextResponse.json(data[0], { status: 201 });
+    return NextResponse.json(
+      {
+        success: true,
+        data: data[0],
+      },
+      { status: 201 }
+    );
   } catch (err) {
     if (isMissingSupabaseEnvError(err)) {
       return missingSupabaseEnvResponse();
     }
 
     if (err instanceof SyntaxError) {
-      return NextResponse.json(
-        { error: 'Invalid JSON' },
-        { status: 400 }
+      return apiErrorResponse(
+        'VALIDATION_ERROR',
+        'Invalid JSON body.',
+        400
       );
     }
 
-    if (err instanceof Error && err.name === 'ZodError') {
-      return NextResponse.json(
-        { error: 'Validation failed', details: err.message },
-        { status: 400 }
+    if (err instanceof z.ZodError) {
+      return apiErrorResponse(
+        'VALIDATION_ERROR',
+        'Monitor input is invalid.',
+        400
       );
     }
 
     console.error('[v0] Unexpected error:', err);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
+    return apiErrorResponse(
+      'INTERNAL_ERROR',
+      'Internal server error.',
+      500
     );
   }
 }
@@ -117,39 +109,42 @@ export async function POST(request: NextRequest) {
  */
 export async function GET(request: NextRequest) {
   try {
-    const supabaseAdmin = getSupabaseAdmin();
-    const userId = await getUserId(request);
-    if (!userId) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+    const auth =
+      await authenticateApiRequest(request);
+
+    if (auth.errorResponse) {
+      return auth.errorResponse;
     }
 
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await auth.supabase
       .from('monitors')
       .select('*')
-      .eq('user_id', userId)
+      .eq('user_id', auth.user.id)
       .order('created_at', { ascending: false });
 
     if (error) {
       console.error('[v0] Supabase query error:', error);
-      return NextResponse.json(
-        { error: 'Failed to fetch monitors' },
-        { status: 500 }
+      return apiErrorResponse(
+        'INTERNAL_ERROR',
+        'Failed to fetch monitors.',
+        500
       );
     }
 
-    return NextResponse.json(data);
+    return NextResponse.json({
+      success: true,
+      data,
+    });
   } catch (err) {
     if (isMissingSupabaseEnvError(err)) {
       return missingSupabaseEnvResponse();
     }
 
     console.error('[v0] Unexpected error:', err);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
+    return apiErrorResponse(
+      'INTERNAL_ERROR',
+      'Internal server error.',
+      500
     );
   }
 }

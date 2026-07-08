@@ -6,6 +6,15 @@ import {
   MISSING_SUPABASE_ENV_MESSAGE,
 } from '@/lib/supabase/env';
 
+const protectedPageRoutes = ['/dashboard'];
+
+const protectedApiRoutes = [
+  '/api/monitors',
+  '/api/captures',
+  '/api/capture-now',
+  '/api/export-affidavit',
+];
+
 export async function middleware(request: NextRequest) {
   const response = NextResponse.next({
     request,
@@ -58,22 +67,41 @@ export async function middleware(request: NextRequest) {
     }
   );
 
+  const isProtectedApiRoute =
+    protectedApiRoutes.some((route) =>
+      request.nextUrl.pathname.startsWith(route)
+    );
+
+  const hasBearerToken =
+    request.headers
+      .get('Authorization')
+      ?.startsWith('Bearer ') ?? false;
+
+  if (isProtectedApiRoute && hasBearerToken) {
+    return response;
+  }
+
+  const isProtectedPageRoute =
+    protectedPageRoutes.some((route) =>
+      request.nextUrl.pathname.startsWith(route)
+    );
+
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const protectedRoutes = [
-    '/dashboard',
-    '/api/monitors',
-    '/api/captures',
-  ];
-
-  const isProtectedRoute =
-    protectedRoutes.some((route) =>
-      request.nextUrl.pathname.startsWith(route)
+  if (isProtectedApiRoute && !user) {
+    return NextResponse.json(
+      {
+        success: false,
+        code: 'UNAUTHORIZED',
+        message: 'Authentication required.',
+      },
+      { status: 401 }
     );
+  }
 
-  if (isProtectedRoute && !user) {
+  if (isProtectedPageRoute && !user) {
     return NextResponse.redirect(
       new URL('/login', request.url)
     );
@@ -87,5 +115,7 @@ export const config = {
     '/dashboard/:path*',
     '/api/monitors/:path*',
     '/api/captures/:path*',
+    '/api/capture-now/:path*',
+    '/api/export-affidavit/:path*',
   ],
 };

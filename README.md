@@ -132,6 +132,22 @@ Follow these instructions to clone, configure, and execute an isolated developme
 
    `NEXT_PUBLIC_*` values are browser-safe Supabase project settings. `SUPABASE_SERVICE_ROLE_KEY` and `SUPABASE_JWT_SECRET` are server-only secrets and must never be exposed in client code or committed to git.
 
+## Supabase Storage Security Note
+
+The current capture upload path uses a Supabase Storage bucket named `captures`.
+For MVP safety, configure this bucket as private. Screenshots should not be
+publicly readable unless a later signed URL flow is implemented. Storage
+policies should prevent users from reading screenshots for monitors they do not
+own.
+
+## Server Role Usage Note
+
+Normal user-scoped monitor and capture listing routes should use the
+authenticated Supabase client so PostgreSQL RLS remains active. The service role
+client is reserved for server-only capture pipeline work, such as uploading
+screenshots to the private `captures` bucket and inserting server-generated
+capture records after monitor ownership has already been verified.
+
 ## Database Schema Overview
 
    The platform maintains two primary target tables within PostgreSQL, strictly enforced through Row Level Security (RLS) conditions to ensure complete multi-tenant tenant data isolation.

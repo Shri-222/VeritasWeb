@@ -6,7 +6,10 @@
 export const runtime = 'nodejs';
 
 import { jsPDF } from 'jspdf';
-import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import {
+  apiErrorResponse,
+  authenticateApiRequest,
+} from '@/lib/auth';
 import {
   isMissingSupabaseEnvError,
   missingSupabaseEnvResponse,
@@ -21,7 +24,6 @@ import { z } from 'zod';
 interface Monitor {
   id: string;
   url: string;
-  user_id: string;
 }
 
 interface Capture {
@@ -53,46 +55,20 @@ const requestSchema = z.object({
 });
 
 // ----------------------------------------------------
-// Auth Helper
-// ----------------------------------------------------
-
-async function getUserId(request: NextRequest): Promise<string | null> {
-  const authHeader = request.headers.get('Authorization');
-
-  if (!authHeader?.startsWith('Bearer ')) {
-    return null;
-  }
-
-  const token = authHeader.substring(7);
-  const supabaseAdmin = getSupabaseAdmin();
-
-  const { data, error } = await supabaseAdmin.auth.getUser(token);
-
-  if (error || !data.user) {
-    return null;
-  }
-
-  return data.user.id;
-}
-
-// ----------------------------------------------------
 // Route Handler
 // ----------------------------------------------------
 
 export async function POST(request: NextRequest) {
   try {
-    const supabaseAdmin = getSupabaseAdmin();
     // --------------------------------------------
     // Authenticate User
     // --------------------------------------------
 
-    const userId = await getUserId(request);
+    const auth =
+      await authenticateApiRequest(request);
 
-    if (!userId) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+    if (auth.errorResponse) {
+      return auth.errorResponse;
     }
 
     // --------------------------------------------
@@ -111,17 +87,25 @@ export async function POST(request: NextRequest) {
     // Fetch Monitor
     // --------------------------------------------
 
-    const { data: monitor, error: monitorError } = await supabaseAdmin
+    const { data: monitor, error: monitorError } = await auth.supabase
       .from('monitors')
-      .select('id, url, user_id')
+      .select('id, url')
       .eq('id', monitor_id)
-      .eq('user_id', userId)
-      .single<Monitor>();
+      .eq('user_id', auth.user.id)
+      .maybeSingle<Monitor>();
 
     if (monitorError || !monitor) {
-      return NextResponse.json(
-        { error: 'Monitor not found' },
-        { status: 404 }
+      if (monitorError) {
+        console.error(
+          'Export Affidavit Monitor Error:',
+          monitorError
+        );
+      }
+
+      return apiErrorResponse(
+        'MONITOR_NOT_FOUND',
+        'Monitor not found.',
+        404
       );
     }
 
@@ -129,7 +113,7 @@ export async function POST(request: NextRequest) {
     // Build Capture Query
     // --------------------------------------------
 
-    let query = supabaseAdmin
+    let query = auth.supabase
       .from('captures')
       .select('id, timestamp, status_code, sha256_hash')
       .eq('monitor_id', monitor_id)
@@ -323,18 +307,17 @@ export async function POST(request: NextRequest) {
     console.error('Export Affidavit Error:', error);
 
     if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        {
-          error: 'Validation Error',
-          details: error.flatten(),
-        },
-        { status: 400 }
+      return apiErrorResponse(
+        'VALIDATION_ERROR',
+        'Export request is invalid.',
+        400
       );
     }
 
-    return NextResponse.json(
-      { error: 'Internal Server Error' },
-      { status: 500 }
+    return apiErrorResponse(
+      'INTERNAL_ERROR',
+      'Internal server error.',
+      500
     );
   }
 }

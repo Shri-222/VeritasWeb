@@ -1,38 +1,61 @@
 import { NextRequest, NextResponse } from "next/server";
 import { captureWebsite } from "@/lib/capture";
 import { calculateSHA256Hash, generateForensicMetadata } from "@/lib/forensic";
+import {
+  apiErrorResponse,
+  authenticateApiRequest,
+} from "@/lib/auth";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   isMissingSupabaseEnvError,
   missingSupabaseEnvResponse,
 } from "@/lib/supabase/env";
+import { z } from "zod";
+
+const captureNowSchema = z.object({
+  monitorId: z.string().uuid(),
+});
 
 export async function POST(
   request: NextRequest,
 ) {
   try {
-  const supabaseAdmin = getSupabaseAdmin();
-  const body = await request.json();
+    const auth =
+      await authenticateApiRequest(request);
 
-  const { monitorId } = body;
-    // Get monitor information
+    if (auth.errorResponse) {
+      return auth.errorResponse;
+    }
 
-    const { data: monitor, error: monitorError } = await supabaseAdmin
+    const body = await request.json();
+
+    const { monitorId } =
+      captureNowSchema.parse(body);
+
+    // Verify ownership before any service-role work.
+    const { data: monitor, error: monitorError } = await auth.supabase
       .from("monitors")
       .select("*")
       .eq("id", monitorId)
-      .single();
+      .eq("user_id", auth.user.id)
+      .maybeSingle();
 
     if (monitorError || !monitor) {
-      return NextResponse.json(
-        {
-          error: "Monitor not found",
-        },
-        {
-          status: 404,
-        },
+      if (monitorError) {
+        console.error(
+          "[capture-now:monitor]",
+          monitorError,
+        );
+      }
+
+      return apiErrorResponse(
+        "MONITOR_NOT_FOUND",
+        "Monitor not found.",
+        404,
       );
     }
+
+    const supabaseAdmin = getSupabaseAdmin();
 
     // Capture website
 
@@ -98,23 +121,38 @@ export async function POST(
 
     return NextResponse.json({
       success: true,
-      capture: captureRecord,
-      forensicMetadata,
+      data: {
+        capture: captureRecord,
+        forensicMetadata,
+      },
     });
   } catch (error) {
     if (isMissingSupabaseEnvError(error)) {
       return missingSupabaseEnvResponse();
     }
 
+    if (error instanceof SyntaxError) {
+      return apiErrorResponse(
+        "VALIDATION_ERROR",
+        "Invalid JSON body.",
+        400,
+      );
+    }
+
+    if (error instanceof z.ZodError) {
+      return apiErrorResponse(
+        "VALIDATION_ERROR",
+        "monitorId is required and must be a valid UUID.",
+        400,
+      );
+    }
+
     console.error("[capture-now]", error);
 
-    return NextResponse.json(
-      {
-        error: error instanceof Error ? error.message : "Capture failed",
-      },
-      {
-        status: 500,
-      },
+    return apiErrorResponse(
+      "CAPTURE_FAILED",
+      "Capture failed.",
+      500,
     );
   }
 }

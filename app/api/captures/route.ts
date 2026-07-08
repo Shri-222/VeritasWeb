@@ -10,19 +10,17 @@
 export const runtime = 'nodejs';
 
 import {
-  createCaptureSchema,
   captureFiltersSchema,
 } from '@/lib/schemas';
 
-import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import {
+  apiErrorResponse,
+  authenticateApiRequest,
+} from '@/lib/auth';
 import {
   isMissingSupabaseEnvError,
   missingSupabaseEnvResponse,
 } from '@/lib/supabase/env';
-
-import {
-  generateInternalTimestampProof,
-} from '@/lib/forensic';
 
 import {
   NextRequest,
@@ -32,227 +30,40 @@ import {
 import { z } from 'zod';
 
 // -----------------------------------------------------
-// Auth Helper
-// -----------------------------------------------------
-
-async function getUserId(
-  request: NextRequest
-): Promise<string | null> {
-  try {
-    const authHeader =
-      request.headers.get('Authorization');
-
-    if (
-      !authHeader ||
-      !authHeader.startsWith('Bearer ')
-    ) {
-      return null;
-    }
-
-    const token = authHeader.substring(7);
-    const supabaseAdmin = getSupabaseAdmin();
-
-    const { data, error } =
-      await supabaseAdmin.auth.getUser(token);
-
-    if (error || !data.user) {
-      return null;
-    }
-
-    return data.user.id;
-  } catch {
-    return null;
-  }
-}
-
-// -----------------------------------------------------
 // POST /api/captures
-// Create forensic capture
+// Client capture creation is intentionally disabled.
 // -----------------------------------------------------
 
 export async function POST(
   request: NextRequest
 ) {
   try {
-    const supabaseAdmin = getSupabaseAdmin();
-    // ---------------------------------------------
-    // Authentication
-    // ---------------------------------------------
+    const auth =
+      await authenticateApiRequest(request);
 
-    const userId = await getUserId(request);
-
-    if (!userId) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+    if (auth.errorResponse) {
+      return auth.errorResponse;
     }
 
-    // ---------------------------------------------
-    // Parse & Validate Body
-    // ---------------------------------------------
-
-    const body = await request.json();
-
-    const validatedData =
-      createCaptureSchema.parse(body);
-
-    // ---------------------------------------------
-    // Verify Monitor Ownership
-    // ---------------------------------------------
-
-    const {
-      data: monitor,
-      error: monitorError,
-    } = await supabaseAdmin
-      .from('monitors')
-      .select('id')
-      .eq('id', validatedData.monitor_id)
-      .eq('user_id', userId)
-      .single();
-
-    if (monitorError || !monitor) {
-      return NextResponse.json(
-        {
-          error:
-            'Monitor not found or unauthorized',
-        },
-        { status: 404 }
-      );
-    }
-
-    // ---------------------------------------------
-    // Get Previous Capture
-    // For forensic chaining
-    // ---------------------------------------------
-
-    const {
-      data: previousCapture,
-    } = await supabaseAdmin
-      .from('captures')
-      .select('sha256_hash')
-      .eq(
-        'monitor_id',
-        validatedData.monitor_id
-      )
-      .order('timestamp', {
-        ascending: false,
-      })
-      .limit(1)
-      .maybeSingle();
-
-    // ---------------------------------------------
-    // Generate Timestamp Proof
-    // ---------------------------------------------
-
-    const tsaToken =
-      await generateInternalTimestampProof(
-        validatedData.sha256_hash
-      );
-
-    // ---------------------------------------------
-    // Insert Capture
-    // ---------------------------------------------
-
-    const {
-      data: capture,
-      error: insertError,
-    } = await supabaseAdmin
-      .from('captures')
-      .insert({
-        monitor_id:
-          validatedData.monitor_id,
-
-        storage_url:
-          validatedData.storage_url,
-
-        sha256_hash:
-          validatedData.sha256_hash
-            .toLowerCase(),
-
-        status_code:
-          validatedData.status_code,
-
-        headers:
-          validatedData.headers,
-
-        tsa_token: tsaToken,
-
-        previous_capture_hash:
-          previousCapture?.sha256_hash ??
-          null,
-      })
-      .select()
-      .single();
-
-    if (insertError) {
-      console.error(
-        '[captures:create]',
-        insertError
-      );
-
-      return NextResponse.json(
-        {
-          error:
-            'Failed to create capture',
-        },
-        { status: 500 }
-      );
-    }
-
-    // ---------------------------------------------
-    // Success
-    // ---------------------------------------------
-
-    return NextResponse.json(
-      capture,
-      { status: 201 }
+    return apiErrorResponse(
+      'FORBIDDEN',
+      'Capture records must be created by the server capture pipeline.',
+      403
     );
   } catch (error) {
     if (isMissingSupabaseEnvError(error)) {
       return missingSupabaseEnvResponse();
     }
 
-    // ---------------------------------------------
-    // Invalid JSON
-    // ---------------------------------------------
-
-    if (error instanceof SyntaxError) {
-      return NextResponse.json(
-        { error: 'Invalid JSON body' },
-        { status: 400 }
-      );
-    }
-
-    // ---------------------------------------------
-    // Validation Errors
-    // ---------------------------------------------
-
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        {
-          error: 'Validation failed',
-          details: error.flatten(),
-        },
-        { status: 400 }
-      );
-    }
-
-    // ---------------------------------------------
-    // Unexpected Errors
-    // ---------------------------------------------
-
     console.error(
       '[captures:post]',
       error
     );
 
-    return NextResponse.json(
-      {
-        error:
-          'Internal server error',
-      },
-      { status: 500 }
+    return apiErrorResponse(
+      'INTERNAL_ERROR',
+      'Internal server error.',
+      500
     );
   }
 }
@@ -266,18 +77,15 @@ export async function GET(
   request: NextRequest
 ) {
   try {
-    const supabaseAdmin = getSupabaseAdmin();
     // ---------------------------------------------
     // Authentication
     // ---------------------------------------------
 
-    const userId = await getUserId(request);
+    const auth =
+      await authenticateApiRequest(request);
 
-    if (!userId) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+    if (auth.errorResponse) {
+      return auth.errorResponse;
     }
 
     // ---------------------------------------------
@@ -313,11 +121,44 @@ export async function GET(
         ),
       });
 
+    if (filters.monitor_id) {
+      const {
+        data: ownedMonitor,
+        error: monitorError,
+      } = await auth.supabase
+        .from('monitors')
+        .select('id')
+        .eq('id', filters.monitor_id)
+        .eq('user_id', auth.user.id)
+        .maybeSingle();
+
+      if (monitorError) {
+        console.error(
+          '[captures:get:monitor]',
+          monitorError
+        );
+
+        return apiErrorResponse(
+          'INTERNAL_ERROR',
+          'Failed to verify monitor ownership.',
+          500
+        );
+      }
+
+      if (!ownedMonitor) {
+        return apiErrorResponse(
+          'MONITOR_NOT_FOUND',
+          'Monitor not found.',
+          404
+        );
+      }
+    }
+
     // ---------------------------------------------
     // Build Query
     // ---------------------------------------------
 
-    let query = supabaseAdmin
+    let query = auth.supabase
       .from('captures')
       .select(
         `
@@ -343,7 +184,7 @@ export async function GET(
       )
       .eq(
         'monitors.user_id',
-        userId
+        auth.user.id
       )
       .order('timestamp', {
         ascending: false,
@@ -401,12 +242,10 @@ export async function GET(
         error
       );
 
-      return NextResponse.json(
-        {
-          error:
-            'Failed to fetch captures',
-        },
-        { status: 500 }
+      return apiErrorResponse(
+        'INTERNAL_ERROR',
+        'Failed to fetch captures.',
+        500
       );
     }
 
@@ -415,6 +254,7 @@ export async function GET(
     // ---------------------------------------------
 
     return NextResponse.json({
+      success: true,
       data,
 
       pagination: {
@@ -433,15 +273,10 @@ export async function GET(
     // ---------------------------------------------
 
     if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        {
-          error:
-            'Invalid query parameters',
-
-          details:
-            error.flatten(),
-        },
-        { status: 400 }
+      return apiErrorResponse(
+        'VALIDATION_ERROR',
+        'Invalid query parameters.',
+        400
       );
     }
 
@@ -454,12 +289,10 @@ export async function GET(
       error
     );
 
-    return NextResponse.json(
-      {
-        error:
-          'Internal server error',
-      },
-      { status: 500 }
+    return apiErrorResponse(
+      'INTERNAL_ERROR',
+      'Internal server error.',
+      500
     );
   }
 }

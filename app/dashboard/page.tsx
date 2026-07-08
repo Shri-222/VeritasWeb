@@ -85,7 +85,11 @@ export default function HomePage() {
         throw new Error(result.error);
       }
 
-      setMonitors(result);
+      setMonitors(
+        Array.isArray(result)
+          ? result
+          : result.data ?? []
+      );
     } catch (error) {
       console.error('Fetch monitors error:', error);
     }
