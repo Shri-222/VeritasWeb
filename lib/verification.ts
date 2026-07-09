@@ -1,5 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
+  calculateSHA256Hash,
+  normalizeHeaders,
+  stableStringify,
   verifyEvidenceIntegrity,
   type EvidenceHashCheck,
 } from '@/lib/forensic';
@@ -80,6 +83,44 @@ async function blobToBuffer(blob: Blob) {
   return Buffer.from(await blob.arrayBuffer());
 }
 
+function hashCheck(
+  stored: string | null,
+  computed: string,
+  match: boolean
+): EvidenceHashCheck {
+  return {
+    stored,
+    computed,
+    match,
+  };
+}
+
+function manifestFieldMatches(
+  manifest: unknown,
+  expected: Record<string, unknown>
+) {
+  if (
+    !manifest ||
+    typeof manifest !== 'object' ||
+    Array.isArray(manifest)
+  ) {
+    return false;
+  }
+
+  const value = manifest as Record<string, unknown>;
+
+  return Object.entries(expected).every(([key, expectedValue]) => {
+    if (key === 'headers') {
+      return (
+        stableStringify(value[key]) ===
+        stableStringify(expectedValue)
+      );
+    }
+
+    return stableStringify(value[key]) === stableStringify(expectedValue);
+  });
+}
+
 export async function verifyCaptureArtifacts(
   capture: OwnedCaptureRecord,
   supabaseAdmin: SupabaseClient<Database>
@@ -142,11 +183,121 @@ export async function verifyCaptureArtifacts(
   const screenshotBuffer =
     await blobToBuffer(screenshotArtifact);
   const htmlBuffer = await blobToBuffer(htmlArtifact);
+  const screenshotSha256 =
+    await calculateSHA256Hash(screenshotBuffer);
+  const htmlSha256 = await calculateSHA256Hash(htmlBuffer);
+
+  if (capture.manifest_path) {
+    const {
+      data: manifestArtifact,
+      error: manifestError,
+    } = await supabaseAdmin.storage
+      .from(bucketName)
+      .download(capture.manifest_path);
+
+    if (manifestError || !manifestArtifact) {
+      if (manifestError) {
+        console.error('[capture:verify:manifest]', manifestError);
+      }
+
+      return emptyResult(
+        capture.id,
+        'MISSING_ARTIFACT',
+        'Capture manifest artifact is missing.'
+      );
+    }
+
+    const manifestBuffer =
+      await blobToBuffer(manifestArtifact);
+    let manifest: unknown;
+
+    try {
+      manifest = JSON.parse(
+        manifestBuffer.toString('utf-8')
+      );
+    } catch {
+      return emptyResult(
+        capture.id,
+        'FAILED',
+        'Capture manifest artifact is not valid JSON.'
+      );
+    }
+
+    const manifestComputedSha256 =
+      await calculateSHA256Hash(manifestBuffer);
+
+    const expectedManifestFields = {
+      schema_version: 'veritasweb.capture.v1',
+      hash_algorithm: 'sha256',
+      monitor_id: capture.monitor_id,
+      original_url: capture.original_url,
+      final_url: capture.final_url,
+      page_title: capture.page_title ?? null,
+      captured_at: capture.captured_at,
+      status_code: capture.status_code,
+      headers: normalizeHeaders(headersToRecord(capture.headers)),
+      screenshot_path: screenshotPath,
+      html_path: capture.html_path,
+      screenshot_sha256: screenshotSha256,
+      html_sha256: htmlSha256,
+      previous_capture_hash:
+        capture.previous_capture_hash ?? null,
+      trigger_type: capture.trigger_type ?? 'manual',
+    };
+
+    const manifestMatchesStoredHash =
+      manifestSha256 === manifestComputedSha256;
+    const manifestMatchesArtifacts =
+      manifestFieldMatches(
+        manifest,
+        expectedManifestFields
+      );
+
+    const checks = {
+      screenshot: hashCheck(
+        capture.screenshot_sha256,
+        screenshotSha256,
+        capture.screenshot_sha256 === screenshotSha256
+      ),
+      html: hashCheck(
+        capture.html_sha256,
+        htmlSha256,
+        capture.html_sha256 === htmlSha256
+      ),
+      manifest: hashCheck(
+        manifestSha256,
+        manifestComputedSha256,
+        manifestMatchesStoredHash &&
+          manifestMatchesArtifacts
+      ),
+    };
+
+    const verified =
+      checks.screenshot.match &&
+      checks.html.match &&
+      checks.manifest.match;
+
+    return {
+      captureId: capture.id,
+      verified,
+      status: verified ? 'VERIFIED' : 'FAILED',
+      checks,
+      message: verified
+        ? 'Capture integrity verified.'
+        : 'Capture integrity verification failed.',
+      verifiedAt: new Date().toISOString(),
+      artifacts: {
+        screenshotBuffer,
+        htmlBuffer,
+      },
+    };
+  }
 
   const result = await verifyEvidenceIntegrity({
     screenshotContent: screenshotBuffer,
     htmlContent: htmlBuffer,
     manifestInput: {
+      monitor_id: capture.monitor_id,
       original_url: capture.original_url,
       final_url: capture.final_url,
       page_title: capture.page_title ?? null,
@@ -157,6 +308,7 @@ export async function verifyCaptureArtifacts(
       html_path: capture.html_path,
       previous_capture_hash:
         capture.previous_capture_hash ?? null,
+      trigger_type: capture.trigger_type ?? 'manual',
     },
     stored: {
       screenshot_sha256: capture.screenshot_sha256,

@@ -126,6 +126,7 @@ export type Database = {
             screenshot_sha256: string | null;
             html_sha256: string | null;
             manifest_sha256: string | null;
+            manifest_path: string | null;
             original_url: string | null;
             final_url: string | null;
             page_title: string | null;
@@ -151,6 +152,7 @@ export type Database = {
             screenshot_sha256?: string | null;
             html_sha256?: string | null;
             manifest_sha256?: string | null;
+            manifest_path?: string | null;
             original_url?: string | null;
             final_url?: string | null;
             page_title?: string | null;
@@ -176,6 +178,7 @@ export type Database = {
             screenshot_sha256?: string | null;
             html_sha256?: string | null;
             manifest_sha256?: string | null;
+            manifest_path?: string | null;
             original_url?: string | null;
             final_url?: string | null;
             page_title?: string | null;

@@ -17,6 +17,7 @@ type StableJson =
   | { [key: string]: StableJson };
 
 export type EvidenceManifestInput = {
+  monitor_id: string;
   original_url: string;
   final_url: string;
   page_title: string | null;
@@ -28,6 +29,7 @@ export type EvidenceManifestInput = {
   screenshot_sha256: string;
   html_sha256: string;
   previous_capture_hash: string | null;
+  trigger_type: string;
 };
 
 export type EvidenceManifest = EvidenceManifestInput & {
@@ -116,6 +118,7 @@ export function createEvidenceManifest(
   return {
     schema_version: 'veritasweb.capture.v1',
     hash_algorithm: 'sha256',
+    monitor_id: input.monitor_id,
     original_url: input.original_url,
     final_url: input.final_url,
     page_title: input.page_title ?? null,
@@ -128,13 +131,22 @@ export function createEvidenceManifest(
     html_sha256: input.html_sha256,
     previous_capture_hash:
       input.previous_capture_hash ?? null,
+    trigger_type: input.trigger_type,
   };
+}
+
+export function serializeEvidenceManifest(
+  manifest: EvidenceManifest
+) {
+  return stableStringify(manifest);
 }
 
 export async function calculateManifestHash(
   manifest: EvidenceManifest
 ) {
-  return calculateSHA256Hash(stableStringify(manifest));
+  return calculateSHA256Hash(
+    serializeEvidenceManifest(manifest)
+  );
 }
 
 export async function createEvidenceManifestWithHash(
@@ -145,6 +157,7 @@ export async function createEvidenceManifestWithHash(
 
   return {
     manifest,
+    manifestJson: serializeEvidenceManifest(manifest),
     manifestHash,
   };
 }

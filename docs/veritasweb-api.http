@@ -1,0 +1,92 @@
+@baseUrl = http://localhost:3000
+@cronSecret = replace-with-your-cron-secret
+@accessToken = replace-with-user-access-token
+@monitorId = replace-with-monitor-id
+@captureId = replace-with-capture-id
+
+### Health
+GET {{baseUrl}}/api/health
+
+### Cron capture due
+POST {{baseUrl}}/api/cron/capture-due
+Authorization: Bearer {{cronSecret}}
+
+### List monitors
+GET {{baseUrl}}/api/monitors
+Authorization: Bearer {{accessToken}}
+
+### Create monitor
+POST {{baseUrl}}/api/monitors
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "url": "https://example.com",
+  "frequency": "hourly",
+  "status": "active"
+}
+
+### Pause monitor
+PATCH {{baseUrl}}/api/monitors/{{monitorId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "status": "paused"
+}
+
+### Resume monitor
+PATCH {{baseUrl}}/api/monitors/{{monitorId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "status": "active"
+}
+
+### Update monitor frequency
+PATCH {{baseUrl}}/api/monitors/{{monitorId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "frequency": "daily"
+}
+
+### Capture now
+POST {{baseUrl}}/api/capture-now
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "monitorId": "{{monitorId}}"
+}
+
+### List captures
+GET {{baseUrl}}/api/captures
+Authorization: Bearer {{accessToken}}
+
+### List captures for monitor
+GET {{baseUrl}}/api/captures?monitor_id={{monitorId}}
+Authorization: Bearer {{accessToken}}
+
+### Capture detail
+GET {{baseUrl}}/api/captures/{{captureId}}
+Authorization: Bearer {{accessToken}}
+
+### Verify capture
+POST {{baseUrl}}/api/captures/{{captureId}}/verify
+Authorization: Bearer {{accessToken}}
+
+### Export capture PDF report
+GET {{baseUrl}}/api/captures/{{captureId}}/report
+Authorization: Bearer {{accessToken}}
+
+### Legacy capture report export
+POST {{baseUrl}}/api/export-affidavit
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "captureId": "{{captureId}}"
+}

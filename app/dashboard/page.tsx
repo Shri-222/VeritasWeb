@@ -72,9 +72,14 @@ export default function HomePage() {
           frequency,
         }),
       });
+      const result = await response.json();
 
       if (!response.ok) {
-        throw new Error('Failed to create monitor');
+        throw new Error(
+          result.message ||
+            result.error ||
+            'Failed to create monitor.'
+        );
       }
 
       await fetchMonitors();
@@ -83,7 +88,11 @@ export default function HomePage() {
       setStatusMessage('Monitor created successfully.');
     } catch (error) {
       console.error('[v0] Monitor creation error:', error);
-      setStatusMessage('Failed to create monitor.');
+      setStatusMessage(
+        error instanceof Error
+          ? error.message
+          : 'Failed to create monitor.'
+      );
     } finally {
       setIsLoading(false);
     }

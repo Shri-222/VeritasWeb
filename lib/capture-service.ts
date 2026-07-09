@@ -31,6 +31,7 @@ export type RunMonitorCaptureResult = {
   manifestSha256: string;
   screenshotSha256: string;
   htmlSha256: string;
+  manifestPath: string;
   statusCode: number;
   pageTitle: string;
   finalUrl: string;
@@ -174,9 +175,11 @@ export async function runMonitorCapture({
 
     const screenshotPath = `${userId}/${monitor.id}/${pathTimestamp}/screenshot.png`;
     const htmlPath = `${userId}/${monitor.id}/${pathTimestamp}/page.html`;
+    const manifestPath = `${userId}/${monitor.id}/${pathTimestamp}/manifest.json`;
 
-    const { manifestHash } =
+    const { manifestHash, manifestJson } =
       await createEvidenceManifestWithHash({
+        monitor_id: monitor.id,
         original_url: result.originalUrl,
         final_url: result.finalUrl,
         page_title: result.title || null,
@@ -188,6 +191,7 @@ export async function runMonitorCapture({
         screenshot_sha256: screenshotSha256,
         html_sha256: htmlSha256,
         previous_capture_hash: previousCaptureHash,
+        trigger_type: triggerType,
       });
 
     const { error: screenshotUploadError } =
@@ -220,6 +224,23 @@ export async function runMonitorCapture({
       throw htmlUploadError;
     }
 
+    const { error: manifestUploadError } =
+      await supabaseAdmin.storage
+        .from(bucketName)
+        .upload(
+          manifestPath,
+          Buffer.from(manifestJson, 'utf-8'),
+          {
+            cacheControl: '3600',
+            upsert: false,
+            contentType: 'application/json; charset=utf-8',
+          }
+        );
+
+    if (manifestUploadError) {
+      throw manifestUploadError;
+    }
+
     const {
       data: captureRecord,
       error: captureError,
@@ -239,6 +260,7 @@ export async function runMonitorCapture({
         screenshot_sha256: screenshotSha256,
         html_sha256: htmlSha256,
         manifest_sha256: manifestHash,
+        manifest_path: manifestPath,
         original_url: result.originalUrl,
         final_url: result.finalUrl,
         page_title: result.title,
@@ -281,6 +303,7 @@ export async function runMonitorCapture({
       manifestSha256: manifestHash,
       screenshotSha256,
       htmlSha256,
+      manifestPath,
       statusCode: result.statusCode,
       pageTitle: result.title,
       finalUrl: result.finalUrl,

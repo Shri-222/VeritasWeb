@@ -50,6 +50,7 @@ export async function GET(
         screenshot_sha256,
         html_sha256,
         manifest_sha256,
+        manifest_path,
         original_url,
         final_url,
         page_title,
@@ -58,6 +59,7 @@ export async function GET(
         status_code,
         headers,
         previous_capture_hash,
+        trigger_type,
         created_at,
         monitors!inner (
           id,
@@ -128,6 +130,7 @@ export async function GET(
         headers: capture.headers ?? {},
         screenshotPath,
         htmlPath: capture.html_path,
+        manifestPath: capture.manifest_path,
         screenshotSignedUrl,
         screenshotSha256:
           capture.screenshot_sha256,

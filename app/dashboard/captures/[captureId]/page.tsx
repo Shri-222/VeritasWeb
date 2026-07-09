@@ -29,6 +29,7 @@ type CaptureDetail = {
   headers: unknown;
   screenshotPath: string | null;
   htmlPath: string | null;
+  manifestPath: string | null;
   screenshotSignedUrl: string | null;
   screenshotSha256: string | null;
   htmlSha256: string | null;
@@ -334,6 +335,10 @@ export default function CaptureDetailPage() {
                 <p className="break-all">
                   <span className="font-medium">HTML path:</span>{' '}
                   {capture.htmlPath || 'Unavailable'}
+                </p>
+                <p className="break-all">
+                  <span className="font-medium">Manifest path:</span>{' '}
+                  {capture.manifestPath || 'Legacy capture or unavailable'}
                 </p>
                 {capture.screenshotSignedUrl && (
                   // eslint-disable-next-line @next/next/no-img-element

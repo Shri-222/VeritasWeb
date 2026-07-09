@@ -166,6 +166,7 @@ export function generateCaptureReportPdf({
   addSection('3. Evidence Artifacts');
   addField('Screenshot storage path', screenshotPath);
   addField('HTML storage path', capture.html_path);
+  addField('Manifest storage path', capture.manifest_path);
   addField('HTML artifact stored', capture.html_path ? 'yes' : 'no');
 
   if (verification.artifacts?.screenshotBuffer) {

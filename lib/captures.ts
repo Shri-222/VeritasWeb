@@ -13,6 +13,7 @@ export type OwnedCaptureRecord = {
   screenshot_sha256: string | null;
   html_sha256: string | null;
   manifest_sha256: string | null;
+  manifest_path: string | null;
   original_url: string | null;
   final_url: string | null;
   page_title: string | null;
@@ -21,6 +22,7 @@ export type OwnedCaptureRecord = {
   status_code: number;
   headers: Json;
   previous_capture_hash: string | null;
+  trigger_type: string | null;
   created_at: string;
   monitors:
     | {
@@ -48,6 +50,7 @@ export const OWNED_CAPTURE_SELECT = `
   screenshot_sha256,
   html_sha256,
   manifest_sha256,
+  manifest_path,
   original_url,
   final_url,
   page_title,
@@ -56,6 +59,7 @@ export const OWNED_CAPTURE_SELECT = `
   status_code,
   headers,
   previous_capture_hash,
+  trigger_type,
   created_at,
   monitors!inner (
     id,

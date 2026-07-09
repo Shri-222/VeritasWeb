@@ -78,6 +78,7 @@ Run SQL scripts in order:
 3. `scripts/03-scheduled-captures.sql`
 4. `scripts/04-final-hardening.sql`
 5. `scripts/05-security-hardening.sql`
+6. `scripts/06-manifest-artifact.sql`
 
 Create a private Storage bucket named `captures`. Stored screenshots and HTML files should not be public by default.
 Capture rows are server-created only; direct authenticated inserts into `captures` are intentionally blocked so evidence records cannot be forged through the browser client.

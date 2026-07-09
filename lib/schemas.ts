@@ -29,6 +29,9 @@ const BLOCKED_HOSTS = [
   'metadata.azure.internal',
 ];
 
+export const UNSAFE_URL_MESSAGE =
+  'This URL is blocked because it points to a private, local, or unsafe address. Use a public http/https website.';
+
 // -----------------------------------------------------
 // Helpers
 // -----------------------------------------------------
@@ -192,7 +195,7 @@ export async function validateCaptureUrl(
     return {
       success: false,
       code: 'UNSAFE_URL',
-      message: 'Only public HTTP/HTTPS URLs are allowed.',
+      message: UNSAFE_URL_MESSAGE,
     };
   }
 
@@ -222,8 +225,7 @@ export async function validateCaptureUrl(
       return {
         success: false,
         code: 'UNSAFE_URL',
-        message:
-          'URL resolved to an internal or private network address.',
+        message: UNSAFE_URL_MESSAGE,
       };
     }
 
@@ -237,8 +239,7 @@ export async function validateCaptureUrl(
     return {
       success: false,
       code: 'UNSAFE_URL',
-      message:
-        'URL hostname could not be resolved safely.',
+      message: UNSAFE_URL_MESSAGE,
     };
   }
 }
