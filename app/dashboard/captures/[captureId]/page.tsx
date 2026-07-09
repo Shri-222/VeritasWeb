@@ -42,7 +42,7 @@ type CaptureDetail = {
 
 type HashCheck = {
   stored: string | null;
-  computed: string;
+  computed: string | null;
   match: boolean;
 };
 

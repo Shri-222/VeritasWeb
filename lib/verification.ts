@@ -1,10 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   calculateSHA256Hash,
-  normalizeHeaders,
-  stableStringify,
+  compareHashes,
   verifyEvidenceIntegrity,
-  type EvidenceHashCheck,
 } from '@/lib/forensic';
 import {
   getCaptureManifestHash,
@@ -13,6 +11,7 @@ import {
 } from '@/lib/captures';
 import { getCaptureBucketName } from '@/lib/storage';
 import type { Database, Json } from '@/types/database';
+import type { EvidenceHashCheck } from '@/lib/forensic';
 
 export type VerificationStatus =
   | 'VERIFIED'
@@ -81,44 +80,6 @@ export function headersToRecord(headers: Json) {
 
 async function blobToBuffer(blob: Blob) {
   return Buffer.from(await blob.arrayBuffer());
-}
-
-function hashCheck(
-  stored: string | null,
-  computed: string,
-  match: boolean
-): EvidenceHashCheck {
-  return {
-    stored,
-    computed,
-    match,
-  };
-}
-
-function manifestFieldMatches(
-  manifest: unknown,
-  expected: Record<string, unknown>
-) {
-  if (
-    !manifest ||
-    typeof manifest !== 'object' ||
-    Array.isArray(manifest)
-  ) {
-    return false;
-  }
-
-  const value = manifest as Record<string, unknown>;
-
-  return Object.entries(expected).every(([key, expectedValue]) => {
-    if (key === 'headers') {
-      return (
-        stableStringify(value[key]) ===
-        stableStringify(expectedValue)
-      );
-    }
-
-    return stableStringify(value[key]) === stableStringify(expectedValue);
-  });
 }
 
 export async function verifyCaptureArtifacts(
@@ -209,66 +170,22 @@ export async function verifyCaptureArtifacts(
 
     const manifestBuffer =
       await blobToBuffer(manifestArtifact);
-    let manifest: unknown;
-
-    try {
-      manifest = JSON.parse(
-        manifestBuffer.toString('utf-8')
-      );
-    } catch {
-      return emptyResult(
-        capture.id,
-        'FAILED',
-        'Capture manifest artifact is not valid JSON.'
-      );
-    }
 
     const manifestComputedSha256 =
       await calculateSHA256Hash(manifestBuffer);
 
-    const expectedManifestFields = {
-      schema_version: 'veritasweb.capture.v1',
-      hash_algorithm: 'sha256',
-      monitor_id: capture.monitor_id,
-      original_url: capture.original_url,
-      final_url: capture.final_url,
-      page_title: capture.page_title ?? null,
-      captured_at: capture.captured_at,
-      status_code: capture.status_code,
-      headers: normalizeHeaders(headersToRecord(capture.headers)),
-      screenshot_path: screenshotPath,
-      html_path: capture.html_path,
-      screenshot_sha256: screenshotSha256,
-      html_sha256: htmlSha256,
-      previous_capture_hash:
-        capture.previous_capture_hash ?? null,
-      trigger_type: capture.trigger_type ?? 'manual',
-    };
-
-    const manifestMatchesStoredHash =
-      manifestSha256 === manifestComputedSha256;
-    const manifestMatchesArtifacts =
-      manifestFieldMatches(
-        manifest,
-        expectedManifestFields
-      );
-
     const checks = {
-      screenshot: hashCheck(
+      screenshot: compareHashes(
         capture.screenshot_sha256,
-        screenshotSha256,
-        capture.screenshot_sha256 === screenshotSha256
+        screenshotSha256
       ),
-      html: hashCheck(
+      html: compareHashes(
         capture.html_sha256,
-        htmlSha256,
-        capture.html_sha256 === htmlSha256
+        htmlSha256
       ),
-      manifest: hashCheck(
+      manifest: compareHashes(
         manifestSha256,
-        manifestComputedSha256,
-        manifestMatchesStoredHash &&
-          manifestMatchesArtifacts
+        manifestComputedSha256
       ),
     };
 

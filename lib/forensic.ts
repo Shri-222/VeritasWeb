@@ -43,7 +43,7 @@ export type EvidenceIntegrityStatus =
 
 export type EvidenceHashCheck = {
   stored: string | null;
-  computed: string;
+  computed: string | null;
   match: boolean;
 };
 
@@ -70,6 +70,33 @@ export async function calculateSHA256Hash(content: string | Buffer): Promise<str
   const data = typeof content === 'string' ? Buffer.from(content, 'utf-8') : content;
   const hash = crypto.createHash('sha256').update(data).digest('hex');
   return hash;
+}
+
+export function normalizeHash(
+  value: string | null | undefined
+): string | null {
+  if (!value) return null;
+
+  return value.trim().toLowerCase();
+}
+
+export function compareHashes(
+  stored: string | null | undefined,
+  computed: string | null | undefined
+): EvidenceHashCheck {
+  const normalizedStored = normalizeHash(stored);
+  const normalizedComputed = normalizeHash(computed);
+
+  const match =
+    Boolean(normalizedStored) &&
+    Boolean(normalizedComputed) &&
+    normalizedStored === normalizedComputed;
+
+  return {
+    stored: normalizedStored,
+    computed: normalizedComputed,
+    match,
+  };
 }
 
 function normalizeForStableJson(value: unknown): StableJson {
@@ -189,26 +216,18 @@ export async function verifyEvidenceIntegrity(
     });
 
   const checks = {
-    screenshot: {
-      stored: input.stored.screenshot_sha256,
-      computed: screenshotSha256,
-      match:
-        input.stored.screenshot_sha256 ===
-        screenshotSha256,
-    },
-    html: {
-      stored: input.stored.html_sha256,
-      computed: htmlSha256,
-      match:
-        input.stored.html_sha256 === htmlSha256,
-    },
-    manifest: {
-      stored: input.stored.manifest_sha256,
-      computed: manifestSha256,
-      match:
-        input.stored.manifest_sha256 ===
-        manifestSha256,
-    },
+    screenshot: compareHashes(
+      input.stored.screenshot_sha256,
+      screenshotSha256
+    ),
+    html: compareHashes(
+      input.stored.html_sha256,
+      htmlSha256
+    ),
+    manifest: compareHashes(
+      input.stored.manifest_sha256,
+      manifestSha256
+    ),
   } satisfies Record<string, EvidenceHashCheck>;
 
   const verified =
