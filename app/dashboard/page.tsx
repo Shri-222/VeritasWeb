@@ -8,6 +8,9 @@ import { Input } from '@/components/ui/input';
 import type { Database } from '@/types/database';
 import { createClient  } from '@/lib/supabase/client';
 
+const UNSAFE_URL_MESSAGE =
+  'This URL is blocked because it points to a private, local, or unsafe address. Use a public http/https website.';
+
 type Monitor =
   Database['public']['Tables']['monitors']['Row'];
 
@@ -75,11 +78,24 @@ export default function HomePage() {
       const result = await response.json();
 
       if (!response.ok) {
-        throw new Error(
+        if (result.code === 'UNSAFE_URL') {
+          setStatusMessage(UNSAFE_URL_MESSAGE);
+          return;
+        }
+
+        if (result.code === 'VALIDATION_ERROR') {
+          setStatusMessage(
+            result.message || 'Monitor input is invalid.'
+          );
+          return;
+        }
+
+        setStatusMessage(
           result.message ||
             result.error ||
-            'Failed to create monitor.'
+            'Failed to create monitor. Please try again.'
         );
+        return;
       }
 
       await fetchMonitors();
@@ -88,11 +104,7 @@ export default function HomePage() {
       setStatusMessage('Monitor created successfully.');
     } catch (error) {
       console.error('[v0] Monitor creation error:', error);
-      setStatusMessage(
-        error instanceof Error
-          ? error.message
-          : 'Failed to create monitor.'
-      );
+      setStatusMessage('Failed to create monitor. Please try again.');
     } finally {
       setIsLoading(false);
     }

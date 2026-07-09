@@ -259,6 +259,12 @@ export const safeUrlSchema = z
       'Only public HTTP/HTTPS URLs are allowed',
   });
 
+const monitorUrlInputSchema = z
+  .string()
+  .trim()
+  .min(1, 'URL is required')
+  .max(MAX_URL_LENGTH, 'URL too long');
+
 export const sha256Schema = z
   .string()
   .trim()
@@ -284,7 +290,7 @@ export const cookieSchema = z.object({
 // -----------------------------------------------------
 
 export const createMonitorSchema = z.object({
-  url: safeUrlSchema,
+  url: monitorUrlInputSchema,
 
   frequency: z.enum([
     'hourly',
@@ -310,7 +316,7 @@ export type CreateMonitorInput =
 
 export const updateMonitorSchema = z
   .object({
-    url: safeUrlSchema.optional(),
+    url: monitorUrlInputSchema.optional(),
 
     frequency: z
       .enum(['hourly', 'daily', 'weekly'])
