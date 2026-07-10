@@ -10,6 +10,8 @@ import {
 import { validateCaptureUrl } from '@/lib/schemas';
 import { getCaptureBucketName } from '@/lib/storage';
 import type { Database } from '@/types/database';
+import { createCaptureDiffForSuccessfulCapture } from '@/lib/change-detection';
+import { notifyWebhookEndpoints } from '@/lib/notifications';
 
 export type CaptureTriggerType = 'manual' | 'scheduled';
 
@@ -119,6 +121,13 @@ async function updateMonitorFailure(
       capture_lock_until: null,
     })
     .eq('id', monitor.id);
+
+  await notifyWebhookEndpoints(supabaseAdmin, monitor.user_id, {
+    type: 'capture_failed',
+    monitorId: monitor.id,
+    monitoredUrl: monitor.url,
+    capturedAt: new Date().toISOString(),
+  });
 }
 
 export async function runMonitorCapture({
@@ -141,7 +150,7 @@ export async function runMonitorCapture({
 
     const { data: previousCapture } = await supabaseAdmin
       .from('captures')
-      .select('sha256_hash, manifest_sha256')
+      .select('id, sha256_hash, manifest_sha256, page_title, final_url, status_code, headers, html_path, screenshot_path, screenshot_sha256, html_sha256')
       .eq('monitor_id', monitor.id)
       .order('captured_at', {
         ascending: false,
@@ -293,6 +302,37 @@ export async function runMonitorCapture({
 
     if (monitorUpdateError) {
       throw monitorUpdateError;
+    }
+
+    try {
+      const diff = await createCaptureDiffForSuccessfulCapture(
+        supabaseAdmin,
+        previousCapture,
+        {
+          id: captureRecord.id,
+          monitor_id: monitor.id,
+          page_title: result.title || null,
+          final_url: result.finalUrl,
+          status_code: result.statusCode,
+          headers: result.headers ?? {},
+          html: result.html,
+          screenshot: result.screenshotBuffer,
+        }
+      );
+      if (diff?.changed) {
+        await notifyWebhookEndpoints(supabaseAdmin, userId, {
+          type: 'page_changed',
+          monitorId: monitor.id,
+          captureId: captureRecord.id,
+          monitoredUrl: monitor.url,
+          changed: true,
+          statusCode: result.statusCode,
+          capturedAt: result.capturedAt,
+          dashboardRecordLink: `${process.env.NEXT_PUBLIC_APP_URL ?? ''}/dashboard/captures/${captureRecord.id}`,
+        });
+      }
+    } catch (diffError) {
+      console.error('[capture:diff:nonfatal]', diffError);
     }
 
     return {

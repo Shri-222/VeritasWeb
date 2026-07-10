@@ -13,6 +13,7 @@ import {
   rateLimitResponse,
 } from '@/lib/rate-limit';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import { BETA_LIMIT_MESSAGE, checkDailyCaptureBetaLimit } from '@/lib/beta';
 import {
   isMissingSupabaseEnvError,
   missingSupabaseEnvResponse,
@@ -130,6 +131,11 @@ export async function POST(request: NextRequest) {
     > = [];
 
     for (const monitor of dueMonitors ?? []) {
+      const betaLimit = await checkDailyCaptureBetaLimit(supabaseAdmin, monitor.user_id);
+      if (!betaLimit.allowed) {
+        results.push({ monitorId: monitor.id, status: 'skipped', reason: BETA_LIMIT_MESSAGE });
+        continue;
+      }
       const lockUntil = new Date();
       lockUntil.setMinutes(lockUntil.getMinutes() + 10);
 

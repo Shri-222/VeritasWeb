@@ -33,6 +33,7 @@ export type Database = {
             last_capture_error: string | null;
             capture_count: number;
             capture_lock_until: string | null;
+            case_id: string | null;
         };
 
         Insert: {
@@ -63,6 +64,7 @@ export type Database = {
             last_capture_error?: string | null;
             capture_count?: number;
             capture_lock_until?: string | null;
+            case_id?: string | null;
         };
 
         Update: {
@@ -93,6 +95,7 @@ export type Database = {
             last_capture_error?: string | null;
             capture_count?: number;
             capture_lock_until?: string | null;
+            case_id?: string | null;
         };
 
         Relationships: [
@@ -135,6 +138,12 @@ export type Database = {
             error_message: string | null;
             trigger_type: string;
             created_at: string;
+            storage_provider: string;
+            timestamp_provider: string | null;
+            timestamp_status: 'not_configured' | 'pending' | 'issued' | 'failed';
+            timestamp_token_path: string | null;
+            timestamp_requested_at: string | null;
+            timestamp_issued_at: string | null;
         };
 
         Insert: {
@@ -161,6 +170,12 @@ export type Database = {
             error_message?: string | null;
             trigger_type?: string;
             created_at?: string;
+            storage_provider?: string;
+            timestamp_provider?: string | null;
+            timestamp_status?: 'not_configured' | 'pending' | 'issued' | 'failed';
+            timestamp_token_path?: string | null;
+            timestamp_requested_at?: string | null;
+            timestamp_issued_at?: string | null;
         };
 
         Update: {
@@ -187,6 +202,12 @@ export type Database = {
             error_message?: string | null;
             trigger_type?: string;
             created_at?: string;
+            storage_provider?: string;
+            timestamp_provider?: string | null;
+            timestamp_status?: 'not_configured' | 'pending' | 'issued' | 'failed';
+            timestamp_token_path?: string | null;
+            timestamp_requested_at?: string | null;
+            timestamp_issued_at?: string | null;
         };
 
         Relationships: [
@@ -198,6 +219,133 @@ export type Database = {
             }
         ];
         };
+
+      cases: {
+        Row: {
+          id: string;
+          user_id: string;
+          name: string;
+          description: string | null;
+          status: 'active' | 'archived';
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          name: string;
+          description?: string | null;
+          status?: 'active' | 'archived';
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          name?: string;
+          description?: string | null;
+          status?: 'active' | 'archived';
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+
+      capture_diffs: {
+        Row: {
+          id: string;
+          monitor_id: string;
+          previous_capture_id: string;
+          current_capture_id: string;
+          changed: boolean;
+          change_score: number | null;
+          text_added_count: number;
+          text_removed_count: number;
+          text_diff: Json;
+          metadata_diff: Json;
+          visual_diff_path: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          monitor_id: string;
+          previous_capture_id: string;
+          current_capture_id: string;
+          changed?: boolean;
+          change_score?: number | null;
+          text_added_count?: number;
+          text_removed_count?: number;
+          text_diff?: Json;
+          metadata_diff?: Json;
+          visual_diff_path?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          monitor_id?: string;
+          previous_capture_id?: string;
+          current_capture_id?: string;
+          changed?: boolean;
+          change_score?: number | null;
+          text_added_count?: number;
+          text_removed_count?: number;
+          text_diff?: Json;
+          metadata_diff?: Json;
+          visual_diff_path?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+
+      notification_endpoints: {
+        Row: {
+          id: string;
+          user_id: string;
+          type: 'webhook' | 'email';
+          destination: string;
+          enabled: boolean;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          type: 'webhook' | 'email';
+          destination: string;
+          enabled?: boolean;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          type?: 'webhook' | 'email';
+          destination?: string;
+          enabled?: boolean;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+
+      monitor_notification_settings: {
+        Row: {
+          monitor_id: string;
+          notify_on_change: boolean;
+          notify_on_failure: boolean;
+          notify_on_status_change: boolean;
+        };
+        Insert: {
+          monitor_id: string;
+          notify_on_change?: boolean;
+          notify_on_failure?: boolean;
+          notify_on_status_change?: boolean;
+        };
+        Update: {
+          monitor_id?: string;
+          notify_on_change?: boolean;
+          notify_on_failure?: boolean;
+          notify_on_status_change?: boolean;
+        };
+        Relationships: [];
+      };
     };
 
     Views: {};

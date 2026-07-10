@@ -2,7 +2,40 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useState, type FormEvent } from 'react';
+import { AuthLayout, InlineAlert } from '@/components/veritas-ui';
+
+function getAuthErrorMessage(data: unknown, fallback: string) {
+  if (!data || typeof data !== 'object') {
+    return fallback;
+  }
+
+  const value = data as {
+    error?: unknown;
+    message?: unknown;
+    details?: {
+      fieldErrors?: Record<string, string[] | undefined>;
+      formErrors?: string[];
+    };
+  };
+
+  if (typeof value.message === 'string') return value.message;
+  if (typeof value.error === 'string') return value.error;
+
+  const fieldErrors = value.details?.fieldErrors;
+  const firstFieldError =
+    fieldErrors &&
+    Object.values(fieldErrors).find(
+      (errors): errors is string[] =>
+        Array.isArray(errors) && errors.length > 0
+    )?.[0];
+
+  return (
+    firstFieldError ||
+    value.details?.formErrors?.[0] ||
+    fallback
+  );
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -13,37 +46,28 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  async function handleSubmit(
-    e: React.FormEvent
-  ) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault();
 
     setLoading(true);
     setError('');
 
     try {
-      const response = await fetch(
-        '/api/auth/login',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type':
-              'application/json',
-          },
-          body: JSON.stringify({
-            email,
-            password,
-          }),
-        }
-      );
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email,
+          password,
+        }),
+      });
 
       const data = await response.json();
 
       if (!response.ok) {
-        setError(
-          data.error ||
-            'Login failed'
-        );
+        setError(getAuthErrorMessage(data, 'Login failed'));
 
         return;
       }
@@ -53,95 +77,71 @@ export default function LoginPage() {
     } catch (error) {
       console.error(error);
 
-      setError(
-        'Something went wrong'
-      );
+      setError('Something went wrong');
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <main className="min-h-screen bg-zinc-950 text-white flex items-center justify-center px-4">
-      <div className="w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-2xl p-8 shadow-2xl">
-        <div className="mb-8 text-center">
-          <h1 className="text-3xl font-bold tracking-tight">
-            VeritasWeb
-          </h1>
-
-          <p className="text-zinc-400 mt-2 text-sm">
-            Secure forensic monitoring platform
-          </p>
-        </div>
-
-        <form
-          onSubmit={handleSubmit}
-          className="space-y-5"
-        >
-          <div>
-            <label className="block text-sm mb-2 text-zinc-300">
-              Email
-            </label>
-
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={(e) =>
-                setEmail(e.target.value)
-              }
-              className="w-full rounded-xl bg-zinc-800 border border-zinc-700 px-4 py-3 outline-none focus:border-zinc-500 transition"
-              placeholder="you@example.com"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm mb-2 text-zinc-300">
-              Password
-            </label>
-
-            <input
-              type="password"
-              required
-              value={password}
-              onChange={(e) =>
-                setPassword(
-                  e.target.value
-                )
-              }
-              className="w-full rounded-xl bg-zinc-800 border border-zinc-700 px-4 py-3 outline-none focus:border-zinc-500 transition"
-              placeholder="Enter password"
-            />
-          </div>
-
-          {error && (
-            <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
-              {error}
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded-xl bg-white text-black font-medium py-3 hover:opacity-90 transition disabled:opacity-50"
-          >
-            {loading
-              ? 'Signing in...'
-              : 'Sign In'}
-          </button>
-        </form>
-
-        <div className="mt-6 text-center text-sm text-zinc-400">
-          Don&apos;t have an account?{' '}
-
-          <Link
-            href="/register"
-            className="text-white hover:underline"
-          >
-            Create account
-          </Link>
-        </div>
+    <AuthLayout>
+      <div className="mb-8">
+        <h2 className="text-2xl font-semibold text-slate-50">
+          Sign in to VeritasWeb
+        </h2>
+        <p className="mt-2 text-sm text-slate-400">
+          Access your evidence capture workspace.
+        </p>
       </div>
-    </main>
+
+      <form onSubmit={handleSubmit} className="space-y-5">
+        <div>
+          <label className="mb-2 block text-sm font-medium text-slate-300">
+            Email
+          </label>
+          <input
+            type="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="w-full rounded-lg border border-[#2A3A52] bg-[#0B1120] px-4 py-3 text-sm text-slate-50 outline-none transition placeholder:text-slate-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20"
+            placeholder="you@example.com"
+            autoComplete="email"
+          />
+        </div>
+
+        <div>
+          <label className="mb-2 block text-sm font-medium text-slate-300">
+            Password
+          </label>
+          <input
+            type="password"
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="w-full rounded-lg border border-[#2A3A52] bg-[#0B1120] px-4 py-3 text-sm text-slate-50 outline-none transition placeholder:text-slate-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20"
+            placeholder="Enter password"
+            autoComplete="current-password"
+          />
+        </div>
+
+        {error && <InlineAlert tone="danger">{error}</InlineAlert>}
+
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full rounded-lg bg-cyan-500 px-4 py-3 text-sm font-semibold text-[#06111A] transition hover:bg-cyan-600 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {loading ? 'Signing in...' : 'Sign In'}
+        </button>
+      </form>
+
+      <p className="mt-6 text-center text-sm text-slate-400">
+        New to VeritasWeb?{' '}
+        <Link href="/register" className="font-medium text-cyan-300 hover:text-cyan-200">
+          Create account
+        </Link>
+      </p>
+    </AuthLayout>
   );
 }

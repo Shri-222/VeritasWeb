@@ -292,6 +292,8 @@ export const cookieSchema = z.object({
 export const createMonitorSchema = z.object({
   url: monitorUrlInputSchema,
 
+  case_id: z.string().uuid('Invalid case ID').nullable().optional(),
+
   frequency: z.enum([
     'hourly',
     'daily',
@@ -317,6 +319,8 @@ export type CreateMonitorInput =
 export const updateMonitorSchema = z
   .object({
     url: monitorUrlInputSchema.optional(),
+
+    case_id: z.string().uuid('Invalid case ID').nullable().optional(),
 
     frequency: z
       .enum(['hourly', 'daily', 'weekly'])

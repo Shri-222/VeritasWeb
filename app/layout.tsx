@@ -17,7 +17,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: 'VeritasWeb',
   description:
-    'Forensic web capture and legal evidence platform',
+    'Forensic-style web capture, integrity verification, and evidence preservation reports',
   icons: {
     icon: [
       {

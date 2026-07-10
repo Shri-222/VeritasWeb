@@ -17,6 +17,7 @@ import {
   isMissingSupabaseEnvError,
   missingSupabaseEnvResponse,
 } from '@/lib/supabase/env';
+import { BETA_LIMIT_MESSAGE, checkDailyCaptureBetaLimit } from '@/lib/beta';
 
 const captureNowSchema = z.object({
   monitorId: z.string().uuid(),
@@ -30,6 +31,9 @@ export async function POST(request: NextRequest) {
     if (auth.errorResponse) {
       return auth.errorResponse;
     }
+
+    const betaLimit = await checkDailyCaptureBetaLimit(auth.supabase, auth.user.id);
+    if (!betaLimit.allowed) return apiErrorResponse('BETA_LIMIT_REACHED', BETA_LIMIT_MESSAGE, 429);
 
     const rateLimit = checkRateLimit({
       key: `manual-capture:${auth.user.id}`,

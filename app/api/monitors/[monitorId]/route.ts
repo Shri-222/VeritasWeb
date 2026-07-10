@@ -166,6 +166,19 @@ export async function PATCH(
 
     const body = await request.json();
     const input = updateMonitorSchema.parse(body);
+
+    if (input.case_id) {
+      const { data: ownedCase, error: caseError } = await result.auth.supabase
+        .from('cases')
+        .select('id')
+        .eq('id', input.case_id)
+        .eq('user_id', result.auth.user.id)
+        .maybeSingle();
+
+      if (caseError || !ownedCase) {
+        return apiErrorResponse('CASE_NOT_FOUND', 'Case not found.', 404);
+      }
+    }
     const update: MonitorUpdate = {};
 
     if (input.frequency) {
@@ -185,6 +198,10 @@ export async function PATCH(
 
     if (input.session_cookies !== undefined) {
       update.session_cookies = input.session_cookies;
+    }
+
+    if (input.case_id !== undefined) {
+      update.case_id = input.case_id;
     }
 
     if (input.url) {

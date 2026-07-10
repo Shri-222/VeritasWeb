@@ -29,6 +29,7 @@ export type OwnedCaptureRecord = {
         id: string;
         url: string;
         user_id: string;
+        case_id: string | null;
       }
     | {
         id: string;
@@ -64,7 +65,8 @@ export const OWNED_CAPTURE_SELECT = `
   monitors!inner (
     id,
     url,
-    user_id
+    user_id,
+    case_id
   )
 `;
 

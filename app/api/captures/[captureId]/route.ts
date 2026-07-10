@@ -140,6 +140,7 @@ export async function GET(
           capture.sha256_hash,
         previousCaptureHash:
           capture.previous_capture_hash,
+        triggerType: capture.trigger_type,
         captureStatus: capture.capture_status,
         errorMessage: capture.error_message,
         createdAt: capture.created_at,

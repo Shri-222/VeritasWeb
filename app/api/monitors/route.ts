@@ -19,6 +19,7 @@ import {
 } from '@/lib/supabase/env';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
+import { BETA_LIMIT_MESSAGE, checkMonitorBetaLimit } from '@/lib/beta';
 
 export async function POST(request: NextRequest) {
   try {
@@ -28,6 +29,9 @@ export async function POST(request: NextRequest) {
     if (auth.errorResponse) {
       return auth.errorResponse;
     }
+
+    const betaLimit = await checkMonitorBetaLimit(auth.supabase, auth.user.id);
+    if (!betaLimit.allowed) return apiErrorResponse('BETA_LIMIT_REACHED', BETA_LIMIT_MESSAGE, 429);
 
     const body = await request.json();
 
@@ -44,6 +48,19 @@ export async function POST(request: NextRequest) {
         safeUrl.message,
         400
       );
+    }
+
+    if (validatedData.case_id) {
+      const { data: ownedCase, error: caseError } = await auth.supabase
+        .from('cases')
+        .select('id')
+        .eq('id', validatedData.case_id)
+        .eq('user_id', auth.user.id)
+        .maybeSingle();
+
+      if (caseError || !ownedCase) {
+        return apiErrorResponse('CASE_NOT_FOUND', 'Case not found.', 404);
+      }
     }
 
     const now = new Date().toISOString();
@@ -71,6 +88,7 @@ export async function POST(request: NextRequest) {
         last_capture_error: null,
         capture_count: 0,
         capture_lock_until: null,
+        case_id: validatedData.case_id ?? null,
       })
       .select();
 
