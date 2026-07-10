@@ -1,0 +1,21 @@
+{
+  "capture_id": "demo-iana-reserved-domains",
+  "captured_at": "2026-07-10T14:45:44.683Z",
+  "final_url": "https://www.iana.org/domains/reserved",
+  "headers": {
+    "content-type": "text/html; charset=UTF-8"
+  },
+  "hash_algorithm": "sha256",
+  "html_path": "/demo/iana-page.html",
+  "html_sha256": "037e7706323bf34361ae85e04afc03c61374697abb8a5d3821bf807d683ee79f",
+  "monitor_id": "demo-iana-reserved-domains",
+  "original_url": "https://www.iana.org/domains/reserved",
+  "page_title": "IANA-managed Reserved Domains",
+  "previous_capture_hash": null,
+  "schema_version": "veritasweb.capture.v1",
+  "screenshot_path": "/demo/iana-screenshot.png",
+  "screenshot_sha256": "ef479e19a7bdd19e905b8d6c050043ff22da9a3ef94f3985d2d54ea801d9ee3d",
+  "status_code": 200,
+  "trigger_type": "demo",
+  "manifest_sha256": "0f5baab28fc02dcac731c089d8a6a8c6e01a59aaa273266b92e2222bcca9c40c"
+}

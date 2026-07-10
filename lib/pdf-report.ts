@@ -3,14 +3,11 @@ import {
   getCaptureManifestHash,
   getCaptureScreenshotPath,
   type OwnedCaptureRecord,
-} from '@/lib/captures';
-import type { CaptureVerificationResult } from '@/lib/verification';
+} from './captures.ts';
+import type { CaptureVerificationResult } from './verification.ts';
 
 if (typeof globalThis.navigator === 'undefined') {
-  Object.defineProperty(globalThis, 'navigator', {
-    value: { userAgent: 'node' },
-    writable: true,
-  });
+  Object.defineProperty(globalThis, 'navigator', { value: { userAgent: 'node' }, writable: true });
 }
 
 type ReportInput = {
@@ -22,583 +19,397 @@ type ReportInput = {
 type Rgb = [number, number, number];
 
 const COLORS = {
-  navy: [7, 11, 20] as Rgb,
-  surface: [248, 250, 252] as Rgb,
-  card: [255, 255, 255] as Rgb,
-  border: [203, 213, 225] as Rgb,
+  ink: [17, 24, 39] as Rgb,
+  cover: [8, 9, 16] as Rgb,
+  purple: [124, 58, 237] as Rgb,
+  deepPurple: [36, 18, 77] as Rgb,
+  cyan: [34, 211, 238] as Rgb,
+  green: [22, 163, 74] as Rgb,
+  amber: [217, 119, 6] as Rgb,
+  red: [220, 38, 38] as Rgb,
+  page: [247, 247, 250] as Rgb,
+  white: [255, 255, 255] as Rgb,
   muted: [100, 116, 139] as Rgb,
-  text: [15, 23, 42] as Rgb,
-  cyan: [6, 182, 212] as Rgb,
-  green: [34, 197, 94] as Rgb,
-  amber: [245, 158, 11] as Rgb,
-  red: [239, 68, 68] as Rgb,
-  softCyan: [236, 254, 255] as Rgb,
+  border: [203, 213, 225] as Rgb,
+  softPurple: [245, 243, 255] as Rgb,
   softGreen: [240, 253, 244] as Rgb,
   softAmber: [255, 251, 235] as Rgb,
   softRed: [254, 242, 242] as Rgb,
+  code: [17, 24, 39] as Rgb,
+  codeText: [229, 231, 235] as Rgb,
 };
 
-const IMPORTANT_HEADERS = [
-  'content-type',
-  'last-modified',
-  'etag',
-  'cache-control',
-  'date',
-  'server',
-];
+const IMPORTANT_HEADERS = ['content-type', 'last-modified', 'etag', 'cache-control', 'date', 'server', 'location'];
 
 function stringifyValue(value: unknown) {
-  if (value === null || value === undefined || value === '') {
-    return 'Not recorded';
-  }
-
-  if (typeof value === 'string') {
-    return value;
-  }
-
-  return JSON.stringify(value);
+  if (value === null || value === undefined || value === '') return 'Not recorded';
+  if (typeof value === 'string') return value;
+  try { return JSON.stringify(value); } catch { return String(value); }
 }
 
 function formatDate(value: string | null | undefined) {
   if (!value) return 'Not recorded';
-
   return new Date(value).toLocaleString('en-US', {
-    timeZone: 'UTC',
-    year: 'numeric',
-    month: 'short',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    timeZoneName: 'short',
+    timeZone: 'UTC', year: 'numeric', month: 'short', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', timeZoneName: 'short',
   });
 }
 
 function headersObject(headers: unknown) {
-  if (
-    !headers ||
-    typeof headers !== 'object' ||
-    Array.isArray(headers)
-  ) {
-    return {};
-  }
-
-  return Object.entries(headers).reduce<Record<string, unknown>>(
-    (result, [key, value]) => {
-      result[key.toLowerCase()] = value;
-      return result;
-    },
-    {}
-  );
+  if (!headers || typeof headers !== 'object' || Array.isArray(headers)) return {};
+  return Object.entries(headers).reduce<Record<string, unknown>>((result, [key, value]) => {
+    result[key.toLowerCase()] = value;
+    return result;
+  }, {});
 }
 
 function resultLabel(match: boolean | undefined) {
   if (match === true) return 'Match';
   if (match === false) return 'No match';
-
   return 'Not available';
 }
 
-export function generateCaptureReportPdf({
-  capture,
-  verification,
-  generatedAt,
-}: ReportInput) {
-  const pdf = new jsPDF({
-    unit: 'pt',
-    format: 'a4',
-  });
-
+export function generateCaptureReportPdf({ capture, verification, generatedAt }: ReportInput) {
+  const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
   const pageWidth = pdf.internal.pageSize.getWidth();
   const pageHeight = pdf.internal.pageSize.getHeight();
-  const margin = 38;
+  const margin = 42;
   const contentWidth = pageWidth - margin * 2;
-  const screenshotPath = getCaptureScreenshotPath(capture);
-  const manifestHash = getCaptureManifestHash(capture);
-  const headers = headersObject(capture.headers);
-  const importantHeaders = IMPORTANT_HEADERS.reduce<Record<string, unknown>>(
-    (result, header) => {
-      if (headers[header] !== undefined) {
-        result[header] = headers[header];
-      }
-      return result;
-    },
-    {}
-  );
+  const bottom = pageHeight - 46;
+  let cursor = 0;
+  let isCover = true;
 
-  function setFill(color: Rgb) {
-    pdf.setFillColor(color[0], color[1], color[2]);
-  }
-
-  function setDraw(color: Rgb) {
-    pdf.setDrawColor(color[0], color[1], color[2]);
-  }
-
-  function setText(color: Rgb) {
-    pdf.setTextColor(color[0], color[1], color[2]);
-  }
-
-  function wrap(text: unknown, width: number) {
-    const lines = pdf.splitTextToSize(stringifyValue(text), width);
-    return Array.isArray(lines) ? lines : [lines];
-  }
-
-  function addWrappedText({
-    text,
-    x,
-    y,
-    width,
-    size = 9,
-    color = COLORS.text,
-    bold = false,
-    lineHeight = size + 4,
-  }: {
-    text: unknown;
-    x: number;
-    y: number;
-    width: number;
-    size?: number;
-    color?: Rgb;
-    bold?: boolean;
-    lineHeight?: number;
-  }) {
-    pdf.setFont('helvetica', bold ? 'bold' : 'normal');
+  const setFill = (color: Rgb) => pdf.setFillColor(...color);
+  const setDraw = (color: Rgb) => pdf.setDrawColor(...color);
+  const setText = (color: Rgb) => pdf.setTextColor(...color);
+  const wrap = (value: unknown, width: number, font = 'helvetica', size = 9) => {
+    pdf.setFont(font, 'normal');
     pdf.setFontSize(size);
-    setText(color);
-
-    const lines = wrap(text, width);
-    pdf.text(lines, x, y);
-    return y + lines.length * lineHeight;
-  }
-
-  function drawCard(x: number, y: number, width: number, height: number) {
-    setFill(COLORS.card);
-    setDraw(COLORS.border);
-    pdf.roundedRect(x, y, width, height, 6, 6, 'FD');
-  }
+    const lines = pdf.splitTextToSize(stringifyValue(value), width);
+    return Array.isArray(lines) ? lines : [lines];
+  };
+  const measureWrappedTextHeight = (value: unknown, width: number, size = 9, lineHeight = size + 4, font = 'helvetica') => wrap(value, width, font, size).length * lineHeight;
 
   function drawHeader() {
-    setFill(COLORS.navy);
-    pdf.rect(0, 0, pageWidth, 66, 'F');
-    setText(COLORS.card);
+    if (isCover) return;
+    setFill(COLORS.cover);
+    pdf.rect(0, 0, pageWidth, 58, 'F');
     pdf.setFont('helvetica', 'bold');
-    pdf.setFontSize(15);
-    pdf.text('VeritasWeb', margin, 28);
-    pdf.setFont('helvetica', 'normal');
-    pdf.setFontSize(10);
-    pdf.text('Evidence Preservation Report', margin, 45);
-    pdf.setFont('helvetica', 'bold');
-    pdf.setFontSize(10);
-    pdf.text(
-      `Verification Status: ${verification.status}`,
-      pageWidth - margin,
-      28,
-      { align: 'right' }
-    );
+    pdf.setFontSize(13);
+    setText(COLORS.white);
+    pdf.text('VeritasWeb', margin, 25);
     pdf.setFont('helvetica', 'normal');
     pdf.setFontSize(8);
-    pdf.text(
-      `Generated: ${formatDate(generatedAt)}`,
-      pageWidth - margin,
-      45,
-      { align: 'right' }
-    );
+    setText(COLORS.cyan);
+    pdf.text('Evidence Preservation Report', margin, 42);
+    setText(COLORS.white);
+    pdf.text(`Capture ${capture.id.slice(0, 12)}...`, pageWidth - margin, 32, { align: 'right' });
+    cursor = 88;
   }
 
-  function sectionTitle(title: string, y: number) {
-    pdf.setFont('helvetica', 'bold');
-    pdf.setFontSize(12);
-    setText(COLORS.text);
-    pdf.text(title, margin, y);
-    setDraw(COLORS.border);
-    pdf.line(margin, y + 8, pageWidth - margin, y + 8);
-    return y + 24;
-  }
-
-  function labelValue(
-    label: string,
-    value: unknown,
-    x: number,
-    y: number,
-    width: number
-  ) {
-    pdf.setFont('helvetica', 'bold');
-    pdf.setFontSize(7.5);
-    setText(COLORS.muted);
-    pdf.text(label.toUpperCase(), x, y);
-
-    return addWrappedText({
-      text: value,
-      x,
-      y: y + 13,
-      width,
-      size: 8,
-      lineHeight: 11,
-    });
-  }
-
-  function addFooter() {
+  function drawFooter() {
     const pageCount = pdf.getNumberOfPages();
     for (let page = 1; page <= pageCount; page += 1) {
       pdf.setPage(page);
       pdf.setFont('helvetica', 'normal');
-      pdf.setFontSize(8);
+      pdf.setFontSize(7.5);
       setText(COLORS.muted);
-      pdf.text(
-        `VeritasWeb Evidence Preservation Report - Page ${page} of ${pageCount}`,
-        margin,
-        pageHeight - 24
-      );
+      pdf.text('VeritasWeb Evidence Preservation Report', margin, pageHeight - 24);
+      pdf.text(`Page ${page} of ${pageCount}`, pageWidth - margin, pageHeight - 24, { align: 'right' });
     }
   }
 
-  function addSummaryBox() {
-    const y = 92;
-    drawCard(margin, y, contentWidth, 260);
-    let cursor = y + 26;
+  function addPage() {
+    pdf.addPage();
+    isCover = false;
+    setFill(COLORS.page);
+    pdf.rect(0, 0, pageWidth, pageHeight, 'F');
+    drawHeader();
+  }
+
+  function ensureSpace(requiredHeight: number) {
+    if (cursor + requiredHeight <= bottom) return;
+    addPage();
+  }
+
+  function sectionTitle(title: string) {
+    ensureSpace(34);
     pdf.setFont('helvetica', 'bold');
-    pdf.setFontSize(14);
-    setText(COLORS.text);
-    pdf.text('Record Summary', margin + 18, cursor);
+    pdf.setFontSize(13);
+    setText(COLORS.ink);
+    pdf.text(title, margin, cursor);
+    setDraw(COLORS.purple);
+    pdf.setLineWidth(1.5);
+    pdf.line(margin, cursor + 8, margin + 42, cursor + 8);
+    setDraw(COLORS.border);
+    pdf.setLineWidth(0.6);
+    pdf.line(margin + 50, cursor + 8, pageWidth - margin, cursor + 8);
     cursor += 28;
-
-    const gap = 18;
-    const colWidth = (contentWidth - 36 - gap) / 2;
-    const leftX = margin + 18;
-    const rightX = leftX + colWidth + gap;
-
-    cursor = labelValue('Capture ID', capture.id, leftX, cursor, colWidth) + 10;
-    cursor = labelValue('Monitor ID', capture.monitor_id, leftX, cursor, colWidth) + 10;
-    cursor = labelValue(
-      'Page Title',
-      capture.page_title,
-      leftX,
-      cursor,
-      colWidth
-    ) + 10;
-    cursor = labelValue(
-      'Captured At',
-      formatDate(capture.captured_at ?? capture.timestamp),
-      leftX,
-      cursor,
-      colWidth
-    );
-
-    let rightCursor = y + 54;
-    rightCursor = labelValue(
-      'Original URL',
-      capture.original_url,
-      rightX,
-      rightCursor,
-      colWidth
-    ) + 10;
-    rightCursor = labelValue(
-      'Final URL',
-      capture.final_url,
-      rightX,
-      rightCursor,
-      colWidth
-    ) + 10;
-    rightCursor = labelValue(
-      'HTTP Status',
-      capture.status_code,
-      rightX,
-      rightCursor,
-      colWidth
-    ) + 10;
-    labelValue(
-      'Trigger Type',
-      capture.trigger_type,
-      rightX,
-      rightCursor,
-      colWidth
-    );
   }
 
-  function addDisclaimerBox(y: number) {
-    setFill(COLORS.softAmber);
-    setDraw(COLORS.amber);
-    pdf.roundedRect(margin, y, contentWidth, 72, 6, 6, 'FD');
-    addWrappedText({
-      text: 'Disclaimer',
-      x: margin + 16,
-      y: y + 20,
-      width: contentWidth - 32,
-      size: 10,
-      bold: true,
-    });
-    addWrappedText({
-      text:
-        'This report verifies stored artifacts against recorded hashes. It does not independently prove legal admissibility and does not replace formal chain-of-custody or jurisdiction-specific evidence procedures.',
-      x: margin + 16,
-      y: y + 40,
-      width: contentWidth - 32,
-      size: 8.5,
-      lineHeight: 12,
-    });
+  function drawCard(x: number, y: number, width: number, height: number, fill = COLORS.white, stroke = COLORS.border) {
+    setFill(fill);
+    setDraw(stroke);
+    pdf.setLineWidth(0.7);
+    pdf.roundedRect(x, y, width, height, 6, 6, 'FD');
   }
 
-  function addStatusStrip() {
-    const y = 386;
-    const statusColor =
-      verification.status === 'VERIFIED'
-        ? COLORS.green
-        : verification.status === 'FAILED'
-          ? COLORS.red
-          : COLORS.amber;
-    const statusFill =
-      verification.status === 'VERIFIED'
-        ? COLORS.softGreen
-        : verification.status === 'FAILED'
-          ? COLORS.softRed
-          : COLORS.softAmber;
+  function addWrappedText(value: unknown, options: { width: number; size?: number; color?: Rgb; bold?: boolean; font?: 'helvetica' | 'courier'; lineHeight?: number; gap?: number; x?: number }) {
+    const size = options.size ?? 9;
+    const lineHeight = options.lineHeight ?? size + 4;
+    const lines = wrap(value, options.width, options.font ?? 'helvetica', size);
+    const height = lines.length * lineHeight;
+    ensureSpace(height + (options.gap ?? 0));
+    pdf.setFont(options.font ?? 'helvetica', options.bold ? 'bold' : 'normal');
+    pdf.setFontSize(size);
+    setText(options.color ?? COLORS.ink);
+    pdf.text(lines, options.x ?? margin, cursor);
+    cursor += height + (options.gap ?? 0);
+    return height;
+  }
 
-    setFill(statusFill);
-    setDraw(statusColor);
-    pdf.roundedRect(margin, y, contentWidth, 74, 6, 6, 'FD');
+  function addKeyValueRow(label: string, value: unknown, width = contentWidth) {
+    const labelWidth = 145;
+    const labelHeight = 10;
+    const valueHeight = measureWrappedTextHeight(value, width - labelWidth, 8.3, 11);
+    ensureSpace(labelHeight + valueHeight + 10);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(7.5);
+    setText(COLORS.muted);
+    pdf.text(label.toUpperCase(), margin, cursor);
+    addWrappedText(value, { x: margin + labelWidth, width: width - labelWidth, size: 8.3, lineHeight: 11, gap: 5 });
+    return Math.max(labelHeight, valueHeight) + 5;
+  }
 
-    labelValue('Verification Status', verification.status, margin + 16, y + 22, 135);
-    labelValue('Overall Result', verification.message, margin + 170, y + 22, 165);
-    labelValue(
-      'Report Source',
-      'Stored capture data',
-      margin + 360,
-      y + 22,
-      contentWidth - 376
-    );
+  function addCodeBlock(value: unknown, options: { width?: number; size?: number; maxLinesPerPage?: number } = {}) {
+    const width = options.width ?? contentWidth - 24;
+    const size = options.size ?? 7;
+    const lineHeight = size + 3;
+    const lines = wrap(value, width - 18, 'courier', size);
+    const maxLinesPerPage = options.maxLinesPerPage ?? 30;
+    let index = 0;
+    while (index < lines.length || (lines.length === 0 && index === 0)) {
+      const remaining = lines.length - index;
+      const count = Math.min(maxLinesPerPage, Math.max(1, remaining));
+      const blockHeight = count * lineHeight + 18;
+      ensureSpace(blockHeight + 8);
+      drawCard(margin, cursor, width, blockHeight, COLORS.code, COLORS.code);
+      pdf.setFont('courier', 'normal');
+      pdf.setFontSize(size);
+      setText(COLORS.codeText);
+      pdf.text(lines.slice(index, index + count), margin + 9, cursor + 13);
+      cursor += blockHeight + 8;
+      index += count;
+      if (index < lines.length) addPage();
+      if (lines.length === 0) break;
+    }
+  }
+
+  function drawVerificationBadge() {
+    const verified = verification.status === 'VERIFIED';
+    const color = verified ? COLORS.green : verification.status === 'FAILED' ? COLORS.red : COLORS.amber;
+    const fill = verified ? COLORS.softGreen : verification.status === 'FAILED' ? COLORS.softRed : COLORS.softAmber;
+    const text = verified ? 'INTEGRITY VERIFIED' : verification.status.replaceAll('_', ' ');
+    setFill(fill);
+    setDraw(color);
+    pdf.roundedRect(pageWidth - margin - 178, 94, 178, 30, 6, 6, 'FD');
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(8);
+    setText(color);
+    pdf.text(text, pageWidth - margin - 89, 113, { align: 'center' });
+  }
+
+  function addDisclaimer() {
+    const text = 'VeritasWeb verifies whether stored artifacts match their recorded hashes. It does not independently establish legal admissibility and does not replace formal chain-of-custody, notarization, expert review, or jurisdiction-specific procedures.';
+    const height = measureWrappedTextHeight(text, contentWidth - 32, 8.2, 11) + 34;
+    ensureSpace(height + 8);
+    drawCard(margin, cursor, contentWidth, height, COLORS.softAmber, COLORS.amber);
+    const start = cursor + 18;
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(9);
+    setText(COLORS.ink);
+    pdf.text('Limitations', margin + 16, start);
+    cursor = start + 15;
+    addWrappedText(text, { x: margin + 16, width: contentWidth - 32, size: 8.2, lineHeight: 11, gap: 8 });
+  }
+
+  function addCover() {
+    setFill(COLORS.cover);
+    pdf.rect(0, 0, pageWidth, 190, 'F');
+    setFill(COLORS.deepPurple);
+    pdf.rect(0, 0, pageWidth * 0.34, 190, 'F');
+    setText(COLORS.white);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(22);
+    pdf.text('VeritasWeb', margin, 48);
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(10);
+    setText(COLORS.cyan);
+    pdf.text('Evidence Preservation Report', margin, 67);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(25);
+    setText(COLORS.white);
+    pdf.text('Stored evidence,', margin, 116);
+    pdf.text('clearly accounted for.', margin, 145);
+    setText(COLORS.cyan);
+    pdf.setFontSize(8);
+    pdf.text('Generated from stored capture artifacts and metadata', margin, 170);
+    setText(COLORS.white);
+    pdf.setFontSize(8);
+    pdf.text(`Generated ${formatDate(generatedAt)}`, pageWidth - margin, 170, { align: 'right' });
+    drawVerificationBadge();
+
+    cursor = 224;
+    sectionTitle('Record Summary');
+    const leftWidth = (contentWidth - 18) / 2;
+    const leftX = margin;
+    const rightX = margin + leftWidth + 18;
+    const rows: Array<[string, unknown]> = [
+      ['Capture ID', capture.id], ['Monitor ID', capture.monitor_id], ['Page Title', capture.page_title],
+      ['Captured At', formatDate(capture.captured_at ?? capture.timestamp)], ['Original URL', capture.original_url],
+      ['Final URL', capture.final_url], ['HTTP Status', capture.status_code], ['Trigger Type', capture.trigger_type],
+    ];
+    for (let index = 0; index < rows.length; index += 2) {
+      const pair = rows.slice(index, index + 2);
+      const heights = pair.map(([, value]) => measureWrappedTextHeight(value, leftWidth - 24, 8.2, 11) + 28);
+      const height = Math.max(...heights);
+      ensureSpace(height);
+      pair.forEach(([label, value], pairIndex) => {
+        const x = pairIndex === 0 ? leftX : rightX;
+        drawCard(x, cursor, leftWidth, height, COLORS.white, COLORS.border);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(7.2);
+        setText(COLORS.muted);
+        pdf.text(label.toUpperCase(), x + 12, cursor + 16);
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(8.2);
+        setText(COLORS.ink);
+        pdf.text(wrap(value, leftWidth - 24, 'helvetica', 8.2), x + 12, cursor + 29);
+      });
+      cursor += height + 10;
+    }
+    cursor += 2;
+    addDisclaimer();
   }
 
   function addScreenshotPage() {
-    pdf.addPage();
-    drawHeader();
-    let y = sectionTitle('Visual Screenshot', 96);
-    drawCard(margin, y, contentWidth, 330);
-    y += 18;
-
-    let screenshotIncluded = false;
-    let screenshotReason = 'No screenshot artifact available.';
-
+    addPage();
+    sectionTitle('Visual Evidence');
+    const frameTop = cursor;
+    const frameHeight = 430;
+    ensureSpace(frameHeight + 60);
+    drawCard(margin, frameTop, contentWidth, frameHeight, COLORS.white, COLORS.border);
+    let included = false;
     if (verification.artifacts?.screenshotBuffer) {
       try {
-        const imageData = `data:image/png;base64,${verification.artifacts.screenshotBuffer.toString('base64')}`;
-        const imageProperties = pdf.getImageProperties(imageData);
-        const imageWidth = contentWidth - 40;
-        const imageHeight =
-          (imageProperties.height * imageWidth) / imageProperties.width;
-        const displayHeight = Math.min(imageHeight, 286);
-
-        pdf.addImage(
-          imageData,
-          'PNG',
-          margin + 20,
-          y,
-          imageWidth,
-          displayHeight
-        );
-        screenshotIncluded = true;
+        const data = `data:image/png;base64,${verification.artifacts.screenshotBuffer.toString('base64')}`;
+        const properties = pdf.getImageProperties(data);
+        const availableWidth = contentWidth - 32;
+        const availableHeight = frameHeight - 34;
+        const scale = Math.min(availableWidth / properties.width, availableHeight / properties.height);
+        const width = properties.width * scale;
+        const height = properties.height * scale;
+        pdf.addImage(data, 'PNG', margin + (contentWidth - width) / 2, frameTop + 17 + (availableHeight - height) / 2, width, height);
+        included = true;
       } catch (error) {
         console.error('[pdf-report:screenshot]', error);
-        screenshotReason = 'Screenshot artifact could not be embedded.';
       }
     }
-
-    if (!screenshotIncluded) {
-      addWrappedText({
-        text: screenshotReason,
-        x: margin + 20,
-        y: y + 30,
-        width: contentWidth - 40,
-        size: 10,
-        color: COLORS.muted,
-      });
+    if (!included) {
+      addWrappedText('Screenshot artifact could not be embedded in this report. The original stored artifact remains available in the evidence bundle.', { x: margin + 16, width: contentWidth - 32, size: 9, color: COLORS.muted, gap: 8 });
     }
-
-    y = sectionTitle('Integrity Verification', 468);
-    addVerificationTable(y);
+    cursor = frameTop + frameHeight + 18;
+    addKeyValueRow('Screenshot included', included ? 'Yes' : 'No');
+    addKeyValueRow('Screenshot artifact', getCaptureScreenshotPath(capture));
+    addKeyValueRow('Note', 'The original full-resolution screenshot is preserved in the stored evidence artifacts and bundle.');
   }
 
-  function addVerificationTable(y: number) {
-    const columns = [
-      { label: 'Artifact', width: 86 },
-      { label: 'Stored Hash', width: 178 },
-      { label: 'Computed Hash', width: 178 },
-      { label: 'Result', width: 70 },
-    ];
+  function addVerificationPage() {
+    addPage();
+    sectionTitle('Integrity Verification');
+    addWrappedText('The following values compare recorded hashes with hashes recomputed from the stored artifacts.', { width: contentWidth, size: 9, color: COLORS.muted, gap: 14 });
+    const columns = [{ label: 'Artifact', width: 92 }, { label: 'Stored Hash', width: 174 }, { label: 'Computed Hash', width: 174 }, { label: 'Result', width: contentWidth - 440 }];
     const rows = [
-      {
-        artifact: 'Screenshot',
-        stored: verification.checks.screenshot?.stored ?? capture.screenshot_sha256,
-        computed: verification.checks.screenshot?.computed,
-        result: resultLabel(verification.checks.screenshot?.match),
-      },
-      {
-        artifact: 'HTML',
-        stored: verification.checks.html?.stored ?? capture.html_sha256,
-        computed: verification.checks.html?.computed,
-        result: resultLabel(verification.checks.html?.match),
-      },
-      {
-        artifact: 'Manifest',
-        stored: verification.checks.manifest?.stored ?? manifestHash,
-        computed: verification.checks.manifest?.computed,
-        result: resultLabel(verification.checks.manifest?.match),
-      },
+      ['Screenshot', verification.checks.screenshot?.stored ?? capture.screenshot_sha256, verification.checks.screenshot?.computed, resultLabel(verification.checks.screenshot?.match)],
+      ['HTML', verification.checks.html?.stored ?? capture.html_sha256, verification.checks.html?.computed, resultLabel(verification.checks.html?.match)],
+      ['Manifest', verification.checks.manifest?.stored ?? getCaptureManifestHash(capture), verification.checks.manifest?.computed, resultLabel(verification.checks.manifest?.match)],
     ];
-
+    const headerHeight = 28;
+    ensureSpace(headerHeight + rows.length * 50 + 80);
+    const tableTop = cursor;
+    setFill(COLORS.ink);
+    pdf.rect(margin, tableTop, contentWidth, headerHeight, 'F');
     let x = margin;
-    setFill(COLORS.navy);
-    pdf.rect(margin, y, contentWidth, 28, 'F');
-    columns.forEach((column) => {
-      pdf.setFont('helvetica', 'bold');
-      pdf.setFontSize(8);
-      setText(COLORS.card);
-      pdf.text(column.label, x + 8, y + 18);
-      x += column.width;
-    });
-
-    let rowY = y + 28;
-    rows.forEach((row, index) => {
-      const rowValues = [
-        row.artifact,
-        row.stored,
-        row.computed,
-        row.result,
-      ];
-      const wrapped = rowValues.map((value, columnIndex) =>
-        wrap(value, columns[columnIndex].width - 14)
-      );
-      const rowHeight = Math.max(
-        34,
-        ...wrapped.map((lines) => lines.length * 10 + 14)
-      );
-
-      setFill(index % 2 === 0 ? COLORS.card : COLORS.surface);
+    columns.forEach((column) => { pdf.setFont('helvetica', 'bold'); pdf.setFontSize(8); setText(COLORS.white); pdf.text(column.label, x + 8, tableTop + 18); x += column.width; });
+    cursor = tableTop + headerHeight;
+    rows.forEach((row, rowIndex) => {
+      const wrapped = row.map((value, index) => wrap(value, columns[index].width - 14, index === 1 || index === 2 ? 'courier' : 'helvetica', index === 1 || index === 2 ? 6.5 : 8));
+      const height = Math.max(38, ...wrapped.map((lines) => lines.length * 9 + 18));
+      setFill(rowIndex % 2 === 0 ? COLORS.white : COLORS.page);
       setDraw(COLORS.border);
-      pdf.rect(margin, rowY, contentWidth, rowHeight, 'FD');
-
+      pdf.rect(margin, cursor, contentWidth, height, 'FD');
       let cellX = margin;
-      wrapped.forEach((lines, columnIndex) => {
-        pdf.setFont(
-          columnIndex === 0 || columnIndex === 3 ? 'helvetica' : 'courier',
-          columnIndex === 0 ? 'bold' : 'normal'
-        );
-        pdf.setFontSize(columnIndex === 0 || columnIndex === 3 ? 8 : 6.7);
-        setText(
-          rowValues[3] === 'Match' && columnIndex === 3
-            ? COLORS.green
-            : rowValues[3] === 'No match' && columnIndex === 3
-              ? COLORS.red
-              : COLORS.text
-        );
-        pdf.text(lines, cellX + 8, rowY + 16);
-        cellX += columns[columnIndex].width;
+      wrapped.forEach((lines, index) => {
+        pdf.setFont(index === 1 || index === 2 ? 'courier' : 'helvetica', index === 0 ? 'bold' : 'normal');
+        pdf.setFontSize(index === 1 || index === 2 ? 6.5 : 8);
+        setText(index === 3 ? (row[3] === 'Match' ? COLORS.green : row[3] === 'No match' ? COLORS.red : COLORS.amber) : COLORS.ink);
+        pdf.text(lines, cellX + 8, cursor + 16);
+        cellX += columns[index].width;
       });
-
-      rowY += rowHeight;
+      cursor += height;
     });
+    cursor += 18;
+    addKeyValueRow('Overall status', verification.status);
+    addKeyValueRow('Verification timestamp', verification.verifiedAt);
+    addKeyValueRow('Previous capture hash', capture.previous_capture_hash);
   }
 
-  function addArtifactsAndMetadataPage() {
-    pdf.addPage();
-    drawHeader();
-    let y = sectionTitle('Evidence Artifacts', 96);
-    const artifactRows = [
-      ['Screenshot path', screenshotPath],
-      ['HTML path', capture.html_path],
-      ['Manifest path', capture.manifest_path],
-    ];
+  function addArtifactsPage() {
+    addPage();
+    sectionTitle('Evidence Artifacts');
+    addKeyValueRow('Screenshot storage path', getCaptureScreenshotPath(capture));
+    addKeyValueRow('HTML storage path', capture.html_path);
+    addKeyValueRow('Manifest storage path', capture.manifest_path);
+    addKeyValueRow('Storage provider', 'Supabase private Storage');
+    cursor += 8;
+    sectionTitle('Capture Metadata');
+    addKeyValueRow('Original URL', capture.original_url);
+    addKeyValueRow('Final URL', capture.final_url);
+    addKeyValueRow('Page title', capture.page_title);
+    addKeyValueRow('HTTP status', capture.status_code);
+    addKeyValueRow('Captured at', formatDate(capture.captured_at ?? capture.timestamp));
+    addKeyValueRow('Trigger type', capture.trigger_type);
+    cursor += 8;
+    sectionTitle('Important HTTP Headers');
+    const headers = headersObject(capture.headers);
+    const important = IMPORTANT_HEADERS.reduce<Record<string, unknown>>((result, key) => { if (headers[key] !== undefined) result[key] = headers[key]; return result; }, {});
+    addCodeBlock(JSON.stringify(important, null, 2), { size: 7 });
+  }
 
-    artifactRows.forEach(([label, value]) => {
-      drawCard(margin, y, contentWidth, 48);
-      labelValue(String(label), value, margin + 16, y + 18, contentWidth - 32);
-      y += 58;
-    });
-
-    y = sectionTitle('HTTP Response Metadata', y + 12);
-    drawCard(margin, y, contentWidth, 168);
-    let metadataY = y + 22;
-    metadataY = addWrappedText({
-      text: 'Important headers',
-      x: margin + 16,
-      y: metadataY,
-      width: contentWidth - 32,
-      size: 9,
-      bold: true,
-    }) + 4;
-    metadataY = addWrappedText({
-      text: JSON.stringify(importantHeaders, null, 2),
-      x: margin + 16,
-      y: metadataY,
-      width: contentWidth - 32,
-      size: 7,
-      color: COLORS.muted,
-      lineHeight: 9,
-    }) + 8;
-
-    const fullHeaderLines = wrap(
-      JSON.stringify(headers, null, 2),
-      contentWidth - 32
-    );
-    addWrappedText({
-      text: 'Full response headers',
-      x: margin + 16,
-      y: metadataY,
-      width: contentWidth - 32,
-      size: 9,
-      bold: true,
-    });
-    pdf.setFont('courier', 'normal');
-    pdf.setFontSize(6.5);
-    setText(COLORS.muted);
-    pdf.text(fullHeaderLines.slice(0, 16), margin + 16, metadataY + 14);
-    if (fullHeaderLines.length > 16) {
-      pdf.setFont('helvetica', 'normal');
-      pdf.setFontSize(7);
-      pdf.text(
-        'Additional headers omitted from this preview section due to space.',
-        margin + 16,
-        y + 152
-      );
-    }
-
-    y += 194;
-    y = sectionTitle('Limitations', y);
+  function addTechnicalAppendix() {
+    addPage();
+    sectionTitle('Technical Appendix - HTTP Response Headers');
+    addWrappedText('Full response headers are rendered below as stored metadata. Long headers continue onto additional pages as needed.', { width: contentWidth, size: 9, color: COLORS.muted, gap: 12 });
+    addCodeBlock(JSON.stringify(headersObject(capture.headers), null, 2), { size: 7, maxLinesPerPage: 31 });
+    cursor += 4;
+    sectionTitle('Limitations and Methodology');
     const limitations = [
-      'Stored artifact verification only.',
-      'No independent legal admissibility guarantee.',
-      'No formal chain-of-custody or notarization is provided by this report.',
-      'Content can vary by region, cookies, authentication state, scripts, browser behavior, or time.',
-      'Report generated from stored data, not live recapture.',
+      'This report verifies whether stored artifacts match their recorded hashes.',
+      'It does not independently establish legal admissibility.',
+      'It does not replace formal chain-of-custody, notarization, expert review, or jurisdiction-specific procedures.',
+      'Website content may vary by geography, authentication state, cookies, scripts, browser behavior, or time.',
+      'The report is generated from stored capture data and does not recapture the website.',
     ];
-    drawCard(margin, y, contentWidth, 132);
-    let limitY = y + 22;
-    limitations.forEach((item) => {
-      limitY = addWrappedText({
-        text: `- ${item}`,
-        x: margin + 16,
-        y: limitY,
-        width: contentWidth - 32,
-        size: 8.5,
-        lineHeight: 12,
-      });
-    });
+    limitations.forEach((item) => addWrappedText(`- ${item}`, { width: contentWidth - 16, size: 8.7, lineHeight: 12, x: margin + 8, gap: 3 }));
+    cursor += 8;
+    addWrappedText('Generated by VeritasWeb. System-generated report from stored evidence artifacts and metadata.', { width: contentWidth, size: 8.5, color: COLORS.muted, gap: 4 });
   }
 
-  drawHeader();
-  addSummaryBox();
-  addStatusStrip();
-  addDisclaimerBox(492);
-  addWrappedText({
-    text: 'Generated by VeritasWeb as a system-generated report from stored capture artifacts and metadata.',
-    x: margin,
-    y: 600,
-    width: contentWidth,
-    size: 9,
-    color: COLORS.muted,
-  });
+  addCover();
   addScreenshotPage();
-  addArtifactsAndMetadataPage();
-  addFooter();
-
+  addVerificationPage();
+  addArtifactsPage();
+  addTechnicalAppendix();
+  drawFooter();
   return Buffer.from(pdf.output('arraybuffer'));
 }

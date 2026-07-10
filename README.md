@@ -163,6 +163,10 @@ sample and never queries private Supabase data. New accounts see a compact
 onboarding panel until their first monitor is created. No demo record is a real
 user capture.
 
+The bundled IANA demo assets can be refreshed with `npm run generate:demo` when
+network access and Chromium are available. This updates only files under
+`public/demo/`; it does not create a Supabase capture.
+
 ## Cases and change detection
 
 Cases group monitors without deleting captures. A case containing monitors is

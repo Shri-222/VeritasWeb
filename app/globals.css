@@ -6,6 +6,11 @@
   .text-balance {
     text-wrap: balance;
   }
+
+  .vw-reveal { animation: vw-fade-up 700ms ease-out both; }
+  .vw-scan-line { position: absolute; inset: 0 auto 0 0; width: 2px; background: rgba(34, 211, 238, 0.8); box-shadow: 0 0 18px rgba(34, 211, 238, 0.75); animation: vw-scan 1.5s ease-in-out infinite; }
+  @keyframes vw-fade-up { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes vw-scan { 0%, 100% { transform: translateX(0); opacity: 0; } 15%, 80% { opacity: 1; } 90% { transform: translateX(480px); opacity: 0; } }
 }
 
 @layer base {
@@ -88,5 +93,16 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+
+  html { scroll-behavior: smooth; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      scroll-behavior: auto !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 }
