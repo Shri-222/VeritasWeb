@@ -8,13 +8,12 @@ import { createEvidenceManifest, jsonFromManifest } from '@/lib/forensic';
 import { generateCaptureReportPdf } from '@/lib/pdf-report';
 import { checkRateLimit, rateLimitResponse } from '@/lib/rate-limit';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { getCaptureBucketName } from '@/lib/storage';
+import { createCaptureArtifactProvider, resolveCaptureStorageProvider } from '@/lib/storage';
 import { headersToRecord, verifyCaptureArtifacts, serializeVerificationResult } from '@/lib/verification';
 import { createZip } from '@/lib/zip';
+import { isMissingTableError, logSupabaseError } from '@/lib/database-errors';
 
 const paramsSchema = z.object({ captureId: z.string().uuid() });
-
-async function toBuffer(blob: Blob | null) { return blob ? Buffer.from(await blob.arrayBuffer()) : null; }
 
 export async function GET(request: NextRequest, context: { params: Promise<{ captureId: string }> }) {
   const auth = await authenticateApiRequest(request);
@@ -30,17 +29,28 @@ export async function GET(request: NextRequest, context: { params: Promise<{ cap
   const admin = getSupabaseAdmin();
   const verification = await verifyCaptureArtifacts(capture, admin);
   if (!verification.artifacts) return apiErrorResponse('ARTIFACTS_MISSING', 'Required capture artifacts are unavailable.', 409);
-  const bucket = getCaptureBucketName();
+  const storage = createCaptureArtifactProvider(capture.storage_provider, admin);
   const manifestPath = capture.manifest_path;
-  let manifestBuffer = manifestPath ? await toBuffer((await admin.storage.from(bucket).download(manifestPath)).data) : null;
+  let manifestBuffer: Buffer | null = null;
+  if (manifestPath) {
+    try {
+      manifestBuffer = await storage.downloadArtifact(manifestPath);
+    } catch (manifestError) {
+      console.error('[capture:bundle:manifest]', manifestError);
+    }
+  }
   if (!manifestBuffer) {
     if (!capture.original_url || !capture.final_url || !capture.captured_at || !capture.html_path || !getCaptureScreenshotPath(capture)) return apiErrorResponse('INCOMPLETE_METADATA', 'Capture metadata is incomplete for a bundle.', 409);
     const manifest = createEvidenceManifest({ monitor_id: capture.monitor_id, original_url: capture.original_url, final_url: capture.final_url, page_title: capture.page_title, captured_at: capture.captured_at, status_code: capture.status_code, headers: headersToRecord(capture.headers), screenshot_path: getCaptureScreenshotPath(capture)!, html_path: capture.html_path, screenshot_sha256: capture.screenshot_sha256 ?? '', html_sha256: capture.html_sha256 ?? '', previous_capture_hash: capture.previous_capture_hash, trigger_type: capture.trigger_type ?? 'manual' });
     manifestBuffer = Buffer.from(JSON.stringify(jsonFromManifest(manifest), null, 2), 'utf8');
   }
 
-  const { data: diff } = await admin.from('capture_diffs').select('*').eq('current_capture_id', capture.id).maybeSingle();
-  const metadata = { capture_id: capture.id, monitor_id: capture.monitor_id, original_url: capture.original_url, final_url: capture.final_url, page_title: capture.page_title, captured_at: capture.captured_at, status_code: capture.status_code, headers: capture.headers, trigger_type: capture.trigger_type, storage_provider: 'supabase' };
+  const diffResult = await admin.from('capture_diffs').select('*').eq('current_capture_id', capture.id).maybeSingle();
+  if (diffResult.error && !isMissingTableError(diffResult.error, 'capture_diffs')) {
+    logSupabaseError('[capture:bundle:diff]', diffResult.error);
+  }
+  const diff = diffResult.data ?? null;
+  const metadata = { capture_id: capture.id, monitor_id: capture.monitor_id, original_url: capture.original_url, final_url: capture.final_url, page_title: capture.page_title, captured_at: capture.captured_at, status_code: capture.status_code, headers: capture.headers, trigger_type: capture.trigger_type, storage_provider: resolveCaptureStorageProvider(capture.storage_provider) };
   const hashes = [`screenshot_sha256=${capture.screenshot_sha256 ?? ''}`, `html_sha256=${capture.html_sha256 ?? ''}`, `manifest_sha256=${getCaptureManifestHash(capture) ?? ''}`].join('\n') + '\n';
   const entries = [
     { name: 'evidence-report.pdf', data: generateCaptureReportPdf({ capture, verification, generatedAt: new Date().toISOString() }) },
@@ -53,8 +63,12 @@ export async function GET(request: NextRequest, context: { params: Promise<{ cap
   ];
   if (diff) entries.push({ name: 'change-diff.json', data: Buffer.from(JSON.stringify(diff, null, 2), 'utf8') });
   if (diff?.visual_diff_path) {
-    const visual = await toBuffer((await admin.storage.from(bucket).download(diff.visual_diff_path)).data);
-    if (visual) entries.push({ name: 'visual-diff.png', data: visual });
+    try {
+      const visual = await storage.downloadArtifact(diff.visual_diff_path);
+      entries.push({ name: 'visual-diff.png', data: visual });
+    } catch (visualError) {
+      console.error('[capture:bundle:visual-diff]', visualError);
+    }
   }
   const zip = createZip(entries);
   return new NextResponse(zip, { status: 200, headers: { 'Content-Type': 'application/zip', 'Content-Disposition': `attachment; filename="veritasweb-evidence-${capture.id}.zip"` } });

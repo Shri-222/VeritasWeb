@@ -20,6 +20,10 @@ import {
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { BETA_LIMIT_MESSAGE, checkMonitorBetaLimit } from '@/lib/beta';
+import {
+  isMissingTableError,
+  logSupabaseError,
+} from '@/lib/database-errors';
 
 export async function POST(request: NextRequest) {
   try {
@@ -58,6 +62,17 @@ export async function POST(request: NextRequest) {
         .eq('user_id', auth.user.id)
         .maybeSingle();
 
+      if (caseError) {
+        logSupabaseError('[monitors:create:case]', caseError);
+        if (isMissingTableError(caseError, 'cases')) {
+          return apiErrorResponse(
+            'DATABASE_MIGRATION_REQUIRED',
+            'The cases database migration has not been applied.',
+            503
+          );
+        }
+      }
+
       if (caseError || !ownedCase) {
         return apiErrorResponse('CASE_NOT_FOUND', 'Case not found.', 404);
       }
@@ -88,7 +103,9 @@ export async function POST(request: NextRequest) {
         last_capture_error: null,
         capture_count: 0,
         capture_lock_until: null,
-        case_id: validatedData.case_id ?? null,
+        ...(validatedData.case_id
+          ? { case_id: validatedData.case_id }
+          : {}),
       })
       .select();
 

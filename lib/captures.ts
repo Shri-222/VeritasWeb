@@ -1,5 +1,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database, Json } from '@/types/database';
+import {
+  isMissingColumnError,
+  logSupabaseError,
+} from './database-errors.ts';
 
 export type OwnedCaptureRecord = {
   id: string;
@@ -24,12 +28,12 @@ export type OwnedCaptureRecord = {
   previous_capture_hash: string | null;
   trigger_type: string | null;
   created_at: string;
+  storage_provider: string | null;
   monitors:
     | {
         id: string;
         url: string;
         user_id: string;
-        case_id: string | null;
       }
     | {
         id: string;
@@ -61,13 +65,7 @@ export const OWNED_CAPTURE_SELECT = `
   headers,
   previous_capture_hash,
   trigger_type,
-  created_at,
-  monitors!inner (
-    id,
-    url,
-    user_id,
-    case_id
-  )
+  created_at
 `;
 
 export async function fetchOwnedCaptureById(
@@ -75,16 +73,70 @@ export async function fetchOwnedCaptureById(
   userId: string,
   captureId: string
 ) {
-  const { data, error } = await supabase
+  const captureResult = await supabase
     .from('captures')
     .select(OWNED_CAPTURE_SELECT)
     .eq('id', captureId)
-    .eq('monitors.user_id', userId)
     .maybeSingle();
 
+  if (captureResult.error) {
+    logSupabaseError(
+      'Capture fetch failed',
+      captureResult.error
+    );
+    return { data: null, error: captureResult.error };
+  }
+
+  if (!captureResult.data) {
+    return { data: null, error: null };
+  }
+
+  const monitorResult = await supabase
+    .from('monitors')
+    .select('id, url, user_id')
+    .eq('id', captureResult.data.monitor_id)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (monitorResult.error) {
+    logSupabaseError(
+      'Capture ownership fetch failed',
+      monitorResult.error
+    );
+    return { data: null, error: monitorResult.error };
+  }
+
+  if (!monitorResult.data) {
+    return { data: null, error: null };
+  }
+
+  const providerResult = await supabase
+    .from('captures')
+    .select('storage_provider')
+    .eq('id', captureId)
+    .maybeSingle();
+
+  if (
+    providerResult.error &&
+    !isMissingColumnError(
+      providerResult.error,
+      'storage_provider'
+    )
+  ) {
+    logSupabaseError(
+      'Capture storage provider fetch failed',
+      providerResult.error
+    );
+  }
+
   return {
-    data: data as OwnedCaptureRecord | null,
-    error,
+    data: {
+      ...captureResult.data,
+      storage_provider:
+        providerResult.data?.storage_provider ?? null,
+      monitors: monitorResult.data,
+    } as OwnedCaptureRecord,
+    error: null,
   };
 }
 

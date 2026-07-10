@@ -9,7 +9,7 @@ import {
   getCaptureScreenshotPath,
   type OwnedCaptureRecord,
 } from '@/lib/captures';
-import { getCaptureBucketName } from '@/lib/storage';
+import { createCaptureArtifactProvider } from '@/lib/storage';
 import type { Database, Json } from '@/types/database';
 import type { EvidenceHashCheck } from '@/lib/forensic';
 
@@ -78,17 +78,12 @@ export function headersToRecord(headers: Json) {
   }, {});
 }
 
-async function blobToBuffer(blob: Blob) {
-  return Buffer.from(await blob.arrayBuffer());
-}
-
 export async function verifyCaptureArtifacts(
   capture: OwnedCaptureRecord,
   supabaseAdmin: SupabaseClient<Database>
 ): Promise<CaptureVerificationResult> {
   const screenshotPath = getCaptureScreenshotPath(capture);
   const manifestSha256 = getCaptureManifestHash(capture);
-  const bucketName = getCaptureBucketName();
 
   if (
     !screenshotPath ||
@@ -107,69 +102,55 @@ export async function verifyCaptureArtifacts(
     );
   }
 
-  const {
-    data: screenshotArtifact,
-    error: screenshotError,
-  } = await supabaseAdmin.storage
-    .from(bucketName)
-    .download(screenshotPath);
+  let storage;
+  try {
+    storage = createCaptureArtifactProvider(
+      capture.storage_provider,
+      supabaseAdmin
+    );
+  } catch (error) {
+    console.error('[capture:verify:provider]', error);
+    return emptyResult(
+      capture.id,
+      'MISSING_ARTIFACT',
+      'The capture artifact storage provider is unavailable.'
+    );
+  }
 
-  const {
-    data: htmlArtifact,
-    error: htmlError,
-  } = await supabaseAdmin.storage
-    .from(bucketName)
-    .download(capture.html_path);
+  let screenshotBuffer: Buffer;
+  let htmlBuffer: Buffer;
 
-  if (
-    screenshotError ||
-    htmlError ||
-    !screenshotArtifact ||
-    !htmlArtifact
-  ) {
-    if (screenshotError || htmlError) {
-      console.error('[capture:verify:storage]', {
-        screenshotError,
-        htmlError,
-      });
-    }
-
+  try {
+    [screenshotBuffer, htmlBuffer] = await Promise.all([
+      storage.downloadArtifact(screenshotPath),
+      storage.downloadArtifact(capture.html_path),
+    ]);
+  } catch (error) {
+    console.error('[capture:verify:storage]', error);
     return emptyResult(
       capture.id,
       'MISSING_ARTIFACT',
       'One or more capture artifacts are missing.'
     );
   }
-
-  const screenshotBuffer =
-    await blobToBuffer(screenshotArtifact);
-  const htmlBuffer = await blobToBuffer(htmlArtifact);
   const screenshotSha256 =
     await calculateSHA256Hash(screenshotBuffer);
   const htmlSha256 = await calculateSHA256Hash(htmlBuffer);
 
   if (capture.manifest_path) {
-    const {
-      data: manifestArtifact,
-      error: manifestError,
-    } = await supabaseAdmin.storage
-      .from(bucketName)
-      .download(capture.manifest_path);
-
-    if (manifestError || !manifestArtifact) {
-      if (manifestError) {
-        console.error('[capture:verify:manifest]', manifestError);
-      }
-
+    let manifestBuffer: Buffer;
+    try {
+      manifestBuffer = await storage.downloadArtifact(
+        capture.manifest_path
+      );
+    } catch (error) {
+      console.error('[capture:verify:manifest]', error);
       return emptyResult(
         capture.id,
         'MISSING_ARTIFACT',
         'Capture manifest artifact is missing.'
       );
     }
-
-    const manifestBuffer =
-      await blobToBuffer(manifestArtifact);
 
     const manifestComputedSha256 =
       await calculateSHA256Hash(manifestBuffer);

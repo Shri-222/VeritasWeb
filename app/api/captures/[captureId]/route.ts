@@ -7,7 +7,15 @@ import {
   authenticateApiRequest,
 } from '@/lib/auth';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { getCaptureBucketName } from '@/lib/storage';
+import {
+  fetchOwnedCaptureById,
+  getCaptureMonitor,
+  getCaptureScreenshotPath,
+} from '@/lib/captures';
+import {
+  createCaptureArtifactProvider,
+  resolveCaptureStorageProvider,
+} from '@/lib/storage';
 import {
   isMissingSupabaseEnvError,
   missingSupabaseEnvResponse,
@@ -35,42 +43,12 @@ export async function GET(
       await context.params
     );
 
-    const { data: capture, error } = await auth.supabase
-      .from('captures')
-      .select(
-        `
-        id,
-        monitor_id,
-        timestamp,
-        captured_at,
-        storage_url,
-        sha256_hash,
-        screenshot_path,
-        html_path,
-        screenshot_sha256,
-        html_sha256,
-        manifest_sha256,
-        manifest_path,
-        original_url,
-        final_url,
-        page_title,
-        capture_status,
-        error_message,
-        status_code,
-        headers,
-        previous_capture_hash,
-        trigger_type,
-        created_at,
-        monitors!inner (
-          id,
-          url,
-          user_id
-        )
-        `
-      )
-      .eq('id', captureId)
-      .eq('monitors.user_id', auth.user.id)
-      .maybeSingle();
+    const { data: capture, error } =
+      await fetchOwnedCaptureById(
+        auth.supabase,
+        auth.user.id,
+        captureId
+      );
 
     if (error) {
       console.error('[capture:detail]', error);
@@ -90,29 +68,29 @@ export async function GET(
       );
     }
 
-    const monitor = Array.isArray(capture.monitors)
-      ? capture.monitors[0]
-      : capture.monitors;
-
+    const monitor = getCaptureMonitor(capture);
     const screenshotPath =
-      capture.screenshot_path ??
-      capture.storage_url ??
-      null;
+      getCaptureScreenshotPath(capture);
 
     let screenshotSignedUrl: string | null = null;
 
     if (screenshotPath) {
-      const supabaseAdmin = getSupabaseAdmin();
-      const { data: signedUrlData } =
-        await supabaseAdmin.storage
-          .from(getCaptureBucketName())
-          .createSignedUrl(
+      try {
+        const storage = createCaptureArtifactProvider(
+          capture.storage_provider,
+          getSupabaseAdmin()
+        );
+        screenshotSignedUrl =
+          await storage.createSignedArtifactUrl(
             screenshotPath,
             60 * 10
           );
-
-      screenshotSignedUrl =
-        signedUrlData?.signedUrl ?? null;
+      } catch (storageError) {
+        console.error(
+          '[capture:detail:preview]',
+          storageError
+        );
+      }
     }
 
     return NextResponse.json({
@@ -144,6 +122,9 @@ export async function GET(
         captureStatus: capture.capture_status,
         errorMessage: capture.error_message,
         createdAt: capture.created_at,
+        storageProvider: resolveCaptureStorageProvider(
+          capture.storage_provider
+        ),
       },
     });
   } catch (error) {

@@ -14,6 +14,10 @@ import {
 } from '@/lib/supabase/env';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import type { Database } from '@/types/database';
+import {
+  isMissingTableError,
+  logSupabaseError,
+} from '@/lib/database-errors';
 
 const paramsSchema = z.object({
   monitorId: z.string().uuid(),
@@ -174,6 +178,17 @@ export async function PATCH(
         .eq('id', input.case_id)
         .eq('user_id', result.auth.user.id)
         .maybeSingle();
+
+      if (caseError) {
+        logSupabaseError('[monitor:item:patch:case]', caseError);
+        if (isMissingTableError(caseError, 'cases')) {
+          return apiErrorResponse(
+            'DATABASE_MIGRATION_REQUIRED',
+            'The cases database migration has not been applied.',
+            503
+          );
+        }
+      }
 
       if (caseError || !ownedCase) {
         return apiErrorResponse('CASE_NOT_FOUND', 'Case not found.', 404);

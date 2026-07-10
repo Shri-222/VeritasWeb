@@ -28,7 +28,7 @@ export function BrandMark({
 }) {
   return (
     <div className="flex items-center gap-3">
-      <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-cyan-400/40 bg-cyan-400/10 text-cyan-300 shadow-[0_0_28px_rgba(6,182,212,0.20)]">
+      <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-cyan-400/45 bg-cyan-400/10 text-cyan-300 shadow-[0_0_28px_rgba(6,182,212,0.16),0_0_34px_rgba(139,92,246,0.10)]">
         <ShieldCheck className="h-5 w-5" aria-hidden="true" />
       </div>
       {!compact && (

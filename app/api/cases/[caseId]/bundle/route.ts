@@ -9,6 +9,10 @@ import { generateCaptureReportPdf } from '@/lib/pdf-report';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { verifyCaptureArtifacts, serializeVerificationResult } from '@/lib/verification';
 import { createZip } from '@/lib/zip';
+import {
+  isMissingTableError,
+  logSupabaseError,
+} from '@/lib/database-errors';
 
 const paramsSchema = z.object({ caseId: z.string().uuid() });
 
@@ -17,7 +21,12 @@ export async function GET(request: NextRequest, context: { params: Promise<{ cas
   if (auth.errorResponse) return auth.errorResponse;
   const parsed = paramsSchema.safeParse(await context.params);
   if (!parsed.success) return apiErrorResponse('CASE_NOT_FOUND', 'Case not found.', 404);
-  const { data: ownedCase } = await auth.supabase.from('cases').select('id, name, description, status').eq('id', parsed.data.caseId).eq('user_id', auth.user.id).maybeSingle();
+  const { data: ownedCase, error: caseError } = await auth.supabase.from('cases').select('id, name, description, status').eq('id', parsed.data.caseId).eq('user_id', auth.user.id).maybeSingle();
+  if (caseError) {
+    logSupabaseError('[case:bundle:fetch]', caseError);
+    if (isMissingTableError(caseError, 'cases')) return apiErrorResponse('DATABASE_MIGRATION_REQUIRED', 'The cases database migration has not been applied.', 503);
+    return apiErrorResponse('INTERNAL_ERROR', 'Failed to fetch case.', 500);
+  }
   if (!ownedCase) return apiErrorResponse('CASE_NOT_FOUND', 'Case not found.', 404);
   const { data: monitors, error: monitorsError } = await auth.supabase.from('monitors').select('id').eq('case_id', ownedCase.id).eq('user_id', auth.user.id);
   if (monitorsError) return apiErrorResponse('INTERNAL_ERROR', 'Failed to fetch case monitors.', 500);

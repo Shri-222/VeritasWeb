@@ -244,7 +244,7 @@ export default function HomePage() {
         body: JSON.stringify({
           url,
           frequency,
-          case_id: caseId || null,
+          ...(caseId ? { case_id: caseId } : {}),
         }),
       });
       const result = await response.json();
@@ -362,10 +362,21 @@ export default function HomePage() {
       if (!session) return;
       const response = await fetch('/api/cases', { headers: { Authorization: `Bearer ${session.access_token}` } });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.message || 'Failed to fetch cases');
+      if (!response.ok) {
+        setCases([]);
+        setCaseMessage({
+          tone: 'danger',
+          text: result.message || 'Cases are currently unavailable.',
+        });
+        return;
+      }
       setCases(result.data ?? []);
-    } catch (error) {
-      console.error('Fetch cases error:', error);
+    } catch {
+      setCases([]);
+      setCaseMessage({
+        tone: 'danger',
+        text: 'Cases are currently unavailable. Please try again.',
+      });
     }
   }, [getSession]);
 
@@ -379,7 +390,10 @@ export default function HomePage() {
       if (!session) return;
       const response = await fetch('/api/cases', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` }, body: JSON.stringify({ name: caseName }) });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.message || 'Failed to create case');
+      if (!response.ok) {
+        setCaseMessage({ tone: 'danger', text: result.message || 'Failed to create case.' });
+        return;
+      }
       setCaseName('');
       setCaseMessage({ tone: 'success', text: 'Case created.' });
       await fetchCases();
@@ -405,8 +419,19 @@ export default function HomePage() {
       if (!session) return;
       const response = await fetch('/api/notifications', { headers: { Authorization: `Bearer ${session.access_token}` } });
       const result = await response.json();
-      if (response.ok) setNotifications(result.data ?? []);
-    } catch (error) { console.error('Fetch notification settings error:', error); }
+      if (!response.ok) {
+        setNotifications([]);
+        setNotificationMessage({ tone: 'danger', text: result.message || 'Notification settings are unavailable.' });
+        return;
+      }
+      const endpoints = Array.isArray(result.data)
+        ? result.data
+        : result.data?.endpoints ?? [];
+      setNotifications(endpoints);
+    } catch {
+      setNotifications([]);
+      setNotificationMessage({ tone: 'danger', text: 'Notification settings are unavailable. Please try again.' });
+    }
   }, [getSession]);
 
   const handleAddWebhook = async () => {
@@ -415,7 +440,10 @@ export default function HomePage() {
       if (!session) return;
       const response = await fetch('/api/notifications', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` }, body: JSON.stringify({ type: 'webhook', destination: webhook }) });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.message || 'Failed to save webhook.');
+      if (!response.ok) {
+        setNotificationMessage({ tone: 'danger', text: result.message || 'Failed to save webhook.' });
+        return;
+      }
       setWebhook(''); setNotificationMessage({ tone: 'success', text: 'Webhook notification enabled.' }); await fetchNotifications();
     } catch (error) { setNotificationMessage({ tone: 'danger', text: error instanceof Error ? error.message : 'Failed to save webhook.' }); }
   };

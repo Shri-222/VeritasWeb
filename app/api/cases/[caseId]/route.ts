@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { apiErrorResponse, authenticateApiRequest } from '@/lib/auth';
+import {
+  isMissingTableError,
+  logSupabaseError,
+} from '@/lib/database-errors';
 
 const paramsSchema = z.object({ caseId: z.string().uuid() });
 const updateSchema = z.object({
@@ -20,7 +24,10 @@ async function getOwnedCase(request: NextRequest, context: { params: Promise<{ c
     .eq('user_id', auth.user.id)
     .maybeSingle();
   if (error) {
-    console.error('[case:fetch]', error);
+    logSupabaseError('[case:fetch]', error);
+    if (isMissingTableError(error, 'cases')) {
+      return { auth, caseId, data: null, errorResponse: apiErrorResponse('DATABASE_MIGRATION_REQUIRED', 'The cases database migration has not been applied.', 503) };
+    }
     return { auth, caseId, data: null, errorResponse: apiErrorResponse('INTERNAL_ERROR', 'Failed to fetch case.', 500) };
   }
   if (!data) return { auth, caseId, data: null, errorResponse: apiErrorResponse('CASE_NOT_FOUND', 'Case not found.', 404) };
@@ -102,4 +109,3 @@ export async function DELETE(request: NextRequest, context: { params: Promise<{ 
   if (error) return apiErrorResponse('INTERNAL_ERROR', 'Failed to delete case.', 500);
   return NextResponse.json({ success: true, deleted: true });
 }
-

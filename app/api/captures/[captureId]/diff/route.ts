@@ -6,6 +6,10 @@ import { apiErrorResponse, authenticateApiRequest } from '@/lib/auth';
 import { fetchOwnedCaptureById } from '@/lib/captures';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { getCaptureBucketName } from '@/lib/storage';
+import {
+  isMissingTableError,
+  logSupabaseError,
+} from '@/lib/database-errors';
 
 const paramsSchema = z.object({ captureId: z.string().uuid() });
 
@@ -28,7 +32,14 @@ export async function GET(request: NextRequest, context: { params: Promise<{ cap
     .eq('monitor_id', capture.monitor_id)
     .maybeSingle();
   if (error) {
-    console.error('[capture:diff:fetch]', error);
+    logSupabaseError('[capture:diff:fetch]', error);
+    if (isMissingTableError(error, 'capture_diffs')) {
+      return apiErrorResponse(
+        'DATABASE_MIGRATION_REQUIRED',
+        'The change detection database migration has not been applied.',
+        503
+      );
+    }
     return apiErrorResponse('INTERNAL_ERROR', 'Failed to fetch capture diff.', 500);
   }
   if (!diff) return NextResponse.json({ success: true, data: { status: 'FIRST_CAPTURE', diff: null } });
@@ -40,4 +51,3 @@ export async function GET(request: NextRequest, context: { params: Promise<{ cap
   }
   return NextResponse.json({ success: true, data: { status: diff.changed ? 'CHANGED' : 'NO_CHANGE', diff, visualDiffSignedUrl } });
 }
-

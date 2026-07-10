@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { apiErrorResponse, authenticateApiRequest } from '@/lib/auth';
+import {
+  isMissingTableError,
+  logSupabaseError,
+} from '@/lib/database-errors';
+import { rowsOrEmpty } from '@/lib/startup-compat';
 
 const caseInputSchema = z.object({
   name: z.string().trim().min(1).max(160),
@@ -18,11 +23,18 @@ export async function GET(request: NextRequest) {
     .order('updated_at', { ascending: false });
 
   if (error) {
-    console.error('[cases:list]', error);
+    logSupabaseError('[cases:list]', error);
+    if (isMissingTableError(error, 'cases')) {
+      return apiErrorResponse(
+        'DATABASE_MIGRATION_REQUIRED',
+        'The cases database migration has not been applied.',
+        503
+      );
+    }
     return apiErrorResponse('INTERNAL_ERROR', 'Failed to fetch cases.', 500);
   }
 
-  return NextResponse.json({ success: true, data });
+  return NextResponse.json({ success: true, data: rowsOrEmpty(data) });
 }
 
 export async function POST(request: NextRequest) {
@@ -43,7 +55,14 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) {
-      console.error('[cases:create]', error);
+      logSupabaseError('[cases:create]', error);
+      if (isMissingTableError(error, 'cases')) {
+        return apiErrorResponse(
+          'DATABASE_MIGRATION_REQUIRED',
+          'The cases database migration has not been applied.',
+          503
+        );
+      }
       return apiErrorResponse('INTERNAL_ERROR', 'Failed to create case.', 500);
     }
 
@@ -55,4 +74,3 @@ export async function POST(request: NextRequest) {
     return apiErrorResponse('VALIDATION_ERROR', 'Invalid JSON body.', 400);
   }
 }
-

@@ -26,6 +26,7 @@ import {
   StatusBadge,
 } from '@/components/veritas-ui';
 import { createClient } from '@/lib/supabase/client';
+import { parseDownloadResponse } from '@/lib/download-response';
 
 type CaptureDetail = {
   id: string;
@@ -313,7 +314,8 @@ export default function CaptureDetailPage() {
       const result = await response.json();
 
       if (!response.ok) {
-        throw new Error(result.message || 'Failed to load capture.');
+        setError(result.message || 'Failed to load capture.');
+        return;
       }
 
       setCapture(result.data);
@@ -358,7 +360,8 @@ export default function CaptureDetailPage() {
       const result = await response.json();
 
       if (!response.ok) {
-        throw new Error(result.message || 'Verification failed.');
+        setError(result.message || 'Verification failed.');
+        return;
       }
 
       setVerification(result.data);
@@ -391,16 +394,20 @@ export default function CaptureDetailPage() {
         },
       });
 
-      if (!response.ok) {
-        const result = await response.json();
-        throw new Error(result.message || 'PDF export failed.');
+      const result = await parseDownloadResponse(
+        response,
+        `veritasweb-capture-${captureId}.pdf`,
+        'PDF export failed.'
+      );
+      if (!result.ok) {
+        setError(result.message);
+        return;
       }
 
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
+      const url = URL.createObjectURL(result.blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `veritasweb-capture-${captureId}.pdf`;
+      link.download = result.filename;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -423,15 +430,19 @@ export default function CaptureDetailPage() {
       const token = await getAccessToken();
       if (!token) { setError('Authentication required.'); return; }
       const response = await fetch(`/api/captures/${captureId}/bundle`, { headers: { Authorization: `Bearer ${token}` } });
-      if (!response.ok) {
-        const result = await response.json();
-        throw new Error(result.message || 'Evidence bundle export failed.');
+      const result = await parseDownloadResponse(
+        response,
+        `veritasweb-evidence-${captureId}.zip`,
+        'Evidence bundle export failed.'
+      );
+      if (!result.ok) {
+        setError(result.message);
+        return;
       }
-      const blob = await response.blob();
-      const objectUrl = URL.createObjectURL(blob);
+      const objectUrl = URL.createObjectURL(result.blob);
       const link = document.createElement('a');
       link.href = objectUrl;
-      link.download = `veritasweb-evidence-${captureId}.zip`;
+      link.download = result.filename;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -679,7 +690,7 @@ export default function CaptureDetailPage() {
                     className="border-[#2A3A52] bg-[#172033] text-slate-100 hover:bg-[#1E293B]"
                   >
                     <Download className="h-4 w-4" aria-hidden="true" />
-                    {exporting ? 'Exporting...' : 'Export Evidence Report'}
+                    {exporting ? 'Generating Report...' : 'Export Evidence Report'}
                   </Button>
                   <Button
                     onClick={downloadEvidenceBundle}
@@ -688,7 +699,7 @@ export default function CaptureDetailPage() {
                     className="border-[#2A3A52] bg-[#172033] text-slate-100 hover:bg-[#1E293B]"
                   >
                     <Download className="h-4 w-4" aria-hidden="true" />
-                    {bundling ? 'Bundling...' : 'Download Evidence Bundle'}
+                    {bundling ? 'Preparing Bundle...' : 'Download Evidence Bundle'}
                   </Button>
                 </div>
               </div>

@@ -13,7 +13,7 @@ export default function DemoPage() {
   const [artifactsOpen, setArtifactsOpen] = useState(false);
   const [hashesOpen, setHashesOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
-  const [verificationStep, setVerificationStep] = useState(-1);
+  const [verificationStep, setVerificationStep] = useState(verificationSteps.length - 1);
   const [reducedMotion, setReducedMotion] = useState(false);
 
   useEffect(() => {

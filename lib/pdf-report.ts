@@ -5,6 +5,7 @@ import {
   type OwnedCaptureRecord,
 } from './captures.ts';
 import type { CaptureVerificationResult } from './verification.ts';
+import { resolveCaptureStorageProvider } from './storage/index.ts';
 
 if (typeof globalThis.navigator === 'undefined') {
   Object.defineProperty(globalThis, 'navigator', { value: { userAgent: 'node' }, writable: true });
@@ -370,7 +371,12 @@ export function generateCaptureReportPdf({ capture, verification, generatedAt }:
     addKeyValueRow('Screenshot storage path', getCaptureScreenshotPath(capture));
     addKeyValueRow('HTML storage path', capture.html_path);
     addKeyValueRow('Manifest storage path', capture.manifest_path);
-    addKeyValueRow('Storage provider', 'Supabase private Storage');
+    addKeyValueRow(
+      'Storage provider',
+      resolveCaptureStorageProvider(capture.storage_provider) === 'supabase'
+        ? 'Supabase private Storage'
+        : 'R2 private object storage'
+    );
     cursor += 8;
     sectionTitle('Capture Metadata');
     addKeyValueRow('Original URL', capture.original_url);
