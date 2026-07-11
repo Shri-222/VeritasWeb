@@ -44,13 +44,12 @@ export function duplicateMonitorMessage(
   requestedCaseId?: string | null
 ) {
   if (requestedCaseId && duplicate.case_id === requestedCaseId) {
-    return 'A monitor for this URL already exists in this case.';
+    return 'A monitor for this URL and frequency already exists. Use the existing monitor or choose a different frequency.';
   }
 
   if (!requestedCaseId && !duplicate.case_id) {
-    return 'A monitor for this URL already exists in your workspace.';
+    return 'A monitor for this URL and frequency already exists. Use the existing monitor or choose a different frequency.';
   }
 
-  return 'A monitor for this URL and frequency already exists in your workspace.';
+  return 'A monitor for this URL and frequency already exists. Use the existing monitor or choose a different frequency.';
 }
-

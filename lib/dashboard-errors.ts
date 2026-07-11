@@ -21,7 +21,7 @@ export function monitorCreationErrorMessage(
   switch (payload.code) {
     case 'MONITOR_ALREADY_EXISTS':
       return apiMessage(payload) ??
-        'A monitor for this URL already exists. Use the existing monitor or choose a different case.';
+        'A monitor for this URL and frequency already exists. Use the existing monitor or choose a different frequency.';
     case 'DATABASE_MIGRATION_REQUIRED':
       return DATABASE_SETUP_MESSAGE;
     case 'UNSAFE_URL':
@@ -51,4 +51,3 @@ export function caseCreationErrorMessage(
       return apiMessage(payload) ?? 'Failed to create case.';
   }
 }
-

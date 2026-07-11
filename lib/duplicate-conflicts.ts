@@ -23,7 +23,7 @@ export function mapUniqueViolation(
   return entity === 'monitor'
     ? {
         code: 'MONITOR_ALREADY_EXISTS',
-        message: 'A monitor for this URL already exists.',
+        message: 'A monitor for this URL and frequency already exists. Use the existing monitor or choose a different frequency.',
         status: 409,
       }
     : {
@@ -32,4 +32,3 @@ export function mapUniqueViolation(
         status: 409,
       };
 }
-

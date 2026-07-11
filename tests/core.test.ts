@@ -200,7 +200,7 @@ test('Postgres unique violations map to monitor and case conflict responses', ()
   const error = { code: '23505', message: 'duplicate key value' };
   assert.deepEqual(mapUniqueViolation(error, 'monitor'), {
     code: 'MONITOR_ALREADY_EXISTS',
-    message: 'A monitor for this URL already exists.',
+    message: 'A monitor for this URL and frequency already exists. Use the existing monitor or choose a different frequency.',
     status: 409,
   });
   assert.deepEqual(mapUniqueViolation(error, 'case'), {
@@ -214,7 +214,7 @@ test('Postgres unique violations map to monitor and case conflict responses', ()
 test('dashboard duplicate and migration errors map to inline messages', () => {
   assert.equal(
     monitorCreationErrorMessage({ code: 'MONITOR_ALREADY_EXISTS' }),
-    'A monitor for this URL already exists. Use the existing monitor or choose a different case.'
+    'A monitor for this URL and frequency already exists. Use the existing monitor or choose a different frequency.'
   );
   assert.equal(
     caseCreationErrorMessage({ code: 'CASE_ALREADY_EXISTS' }),
