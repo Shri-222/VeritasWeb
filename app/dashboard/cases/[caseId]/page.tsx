@@ -6,6 +6,10 @@ import { ArrowLeft, Briefcase, Download } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { AppShell, InlineAlert, StatusBadge } from '@/components/veritas-ui';
 import { createClient } from '@/lib/supabase/client';
+import {
+  parseDownloadResponse,
+  triggerBrowserDownload,
+} from '@/lib/download-response';
 
 type CaseDetail = {
   case: { id: string; name: string; description: string | null; status: string };
@@ -45,9 +49,9 @@ export default function CaseDetailPage() {
       const token = (await createClient().auth.getSession()).data.session?.access_token;
       if (!token) throw new Error('Authentication required.');
       const response = await fetch(`/api/cases/${params.caseId}/bundle`, { headers: { Authorization: `Bearer ${token}` } });
-      if (!response.ok) { const result = await response.json(); throw new Error(result.message || 'Case bundle export failed.'); }
-      const objectUrl = URL.createObjectURL(await response.blob());
-      const link = document.createElement('a'); link.href = objectUrl; link.download = `veritasweb-case-${params.caseId}.zip`; document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(objectUrl);
+      const result = await parseDownloadResponse(response, `veritasweb-case-${params.caseId}.zip`, 'Case bundle export failed.');
+      if (!result.ok) { setError(result.message); return; }
+      triggerBrowserDownload(result.blob, result.filename);
     } catch (bundleError) { setError(bundleError instanceof Error ? bundleError.message : 'Case bundle export failed.'); }
     finally { setExporting(false); }
   }
@@ -75,4 +79,3 @@ export default function CaseDetailPage() {
     </AppShell>
   );
 }
-

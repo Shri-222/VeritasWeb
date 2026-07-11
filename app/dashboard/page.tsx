@@ -30,9 +30,10 @@ import {
 } from '@/components/veritas-ui';
 import type { Database } from '@/types/database';
 import { createClient } from '@/lib/supabase/client';
-
-const UNSAFE_URL_MESSAGE =
-  'Unsafe URL blocked. This URL points to a private, local, or internal address. Use a public HTTP/HTTPS website.';
+import {
+  caseCreationErrorMessage,
+  monitorCreationErrorMessage,
+} from '@/lib/dashboard-errors';
 
 type Monitor =
   Database['public']['Tables']['monitors']['Row'];
@@ -172,6 +173,7 @@ export default function HomePage() {
   const [caseId, setCaseId] = useState<string>('');
   const [caseName, setCaseName] = useState('');
   const [caseMessage, setCaseMessage] = useState<Message | null>(null);
+  const [caseCreating, setCaseCreating] = useState(false);
   const [usage, setUsage] = useState<BetaUsage | null>(null);
   const [notifications, setNotifications] = useState<NotificationEndpoint[]>([]);
   const [webhook, setWebhook] = useState('');
@@ -250,28 +252,9 @@ export default function HomePage() {
       const result = await response.json();
 
       if (!response.ok) {
-        if (result.code === 'UNSAFE_URL') {
-          setCreateMessage({
-            tone: 'danger',
-            text: UNSAFE_URL_MESSAGE,
-          });
-          return;
-        }
-
-        if (result.code === 'VALIDATION_ERROR') {
-          setCreateMessage({
-            tone: 'danger',
-            text: result.message || 'Monitor input is invalid.',
-          });
-          return;
-        }
-
         setCreateMessage({
           tone: 'danger',
-          text:
-            result.message ||
-            result.error ||
-            'Failed to create monitor. Please try again.',
+          text: monitorCreationErrorMessage(result),
         });
         return;
       }
@@ -284,8 +267,7 @@ export default function HomePage() {
         tone: 'success',
         text: 'Monitor created successfully.',
       });
-    } catch (error) {
-      console.error('[v0] Monitor creation error:', error);
+    } catch {
       setCreateMessage({
         tone: 'danger',
         text: 'Failed to create monitor. Please try again.',
@@ -385,21 +367,28 @@ export default function HomePage() {
       setCaseMessage({ tone: 'danger', text: 'Enter a case name.' });
       return;
     }
+    setCaseCreating(true);
+    setCaseMessage(null);
     try {
       const session = await getSession();
-      if (!session) return;
+      if (!session) {
+        setCaseMessage({ tone: 'danger', text: 'You must be logged in.' });
+        return;
+      }
       const response = await fetch('/api/cases', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` }, body: JSON.stringify({ name: caseName }) });
       const result = await response.json();
       if (!response.ok) {
-        setCaseMessage({ tone: 'danger', text: result.message || 'Failed to create case.' });
+        setCaseMessage({ tone: 'danger', text: caseCreationErrorMessage(result) });
         return;
       }
       setCaseName('');
       setCaseMessage({ tone: 'success', text: 'Case created.' });
       await fetchCases();
       if (result.data?.id) setCaseId(result.data.id);
-    } catch (error) {
-      setCaseMessage({ tone: 'danger', text: error instanceof Error ? error.message : 'Failed to create case.' });
+    } catch {
+      setCaseMessage({ tone: 'danger', text: 'Failed to create case. Please try again.' });
+    } finally {
+      setCaseCreating(false);
     }
   };
 
@@ -789,7 +778,7 @@ export default function HomePage() {
             <div id="cases" className="rounded-xl border border-[#2A3A52] bg-[#111827]/70 p-4">
               <div className="flex items-center gap-2"><Briefcase className="h-4 w-4 text-cyan-300" /><h2 className="text-sm font-semibold text-slate-50">Cases</h2></div>
               <p className="mt-1 text-xs text-slate-500">Group monitors and records without changing their ownership or retention.</p>
-              <div className="mt-3 flex flex-col gap-2 sm:flex-row"><Input value={caseName} onChange={(event) => setCaseName(event.target.value)} placeholder="New case name" className="border-[#2A3A52] bg-[#0B1120] text-slate-50 placeholder:text-slate-500" /><Button onClick={handleCreateCase} variant="outline" className="border-cyan-500/50 bg-cyan-500/10 text-cyan-100 hover:bg-cyan-500/20">Create Case</Button></div>
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row"><Input value={caseName} onChange={(event) => setCaseName(event.target.value)} placeholder="New case name" className="border-[#2A3A52] bg-[#0B1120] text-slate-50 placeholder:text-slate-500" /><Button onClick={handleCreateCase} disabled={caseCreating} variant="outline" className="border-cyan-500/50 bg-cyan-500/10 text-cyan-100 hover:bg-cyan-500/20">{caseCreating ? 'Creating...' : 'Create Case'}</Button></div>
               {caseMessage && <div className="mt-3"><InlineAlert tone={caseMessage.tone}>{caseMessage.text}</InlineAlert></div>}
               {cases.length > 0 && <div className="mt-3 flex flex-wrap gap-2">{cases.map((item) => <Link key={item.id} href={`/dashboard/cases/${item.id}`} className="rounded-md border border-white/10 px-2.5 py-1.5 text-xs text-slate-300 hover:border-cyan-400/50 hover:text-white">{item.name} <span className="text-slate-500">{item.status}</span></Link>)}</div>}
               <div className="mt-4 border-t border-white/10 pt-4"><p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Webhook notifications</p><p className="mt-1 text-xs text-slate-500">Optional HTTPS alerts for changed pages. Private/internal destinations are blocked.</p><div className="mt-3 flex flex-col gap-2 sm:flex-row"><Input value={webhook} onChange={(event) => setWebhook(event.target.value)} placeholder="https://hooks.example.com/..." className="border-[#2A3A52] bg-[#0B1120] text-slate-50 placeholder:text-slate-500" /><Button onClick={handleAddWebhook} variant="outline" className="border-cyan-500/50 bg-cyan-500/10 text-cyan-100 hover:bg-cyan-500/20">Add Webhook</Button></div>{notificationMessage && <div className="mt-3"><InlineAlert tone={notificationMessage.tone}>{notificationMessage.text}</InlineAlert></div>}{notifications.length > 0 && <p className="mt-3 text-xs text-emerald-300">{notifications.filter((item) => item.enabled).length} webhook endpoint(s) enabled.</p>}</div>

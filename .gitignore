@@ -29,3 +29,4 @@ next-env.d.ts
 
 # MD files 
 *.md
+!CLEANUP_NOTES.md

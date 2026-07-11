@@ -18,6 +18,16 @@ import { parseDownloadResponse } from '../lib/download-response.ts';
 import { generateCaptureReportPdf } from '../lib/pdf-report.ts';
 import type { OwnedCaptureRecord } from '../lib/captures.ts';
 import type { CaptureVerificationResult } from '../lib/verification.ts';
+import {
+  monitorUrlComparisonValues,
+  normalizeCaseName,
+  normalizeMonitorUrl,
+} from '../lib/normalization.ts';
+import { mapUniqueViolation } from '../lib/duplicate-conflicts.ts';
+import {
+  caseCreationErrorMessage,
+  monitorCreationErrorMessage,
+} from '../lib/dashboard-errors.ts';
 
 test('stable manifest serialization recursively sorts object keys', () => {
   assert.equal(stableStringify({ b: { z: 1, a: 2 }, a: [3, { d: 4, c: 5 }] }), stableStringify({ a: [3, { c: 5, d: 4 }], b: { a: 2, z: 1 } }));
@@ -161,4 +171,61 @@ test('download parser uses the server Content-Disposition filename', async () =>
   const result = await parseDownloadResponse(response, 'fallback.pdf', 'Download failed.');
   assert.equal(result.ok, true);
   if (result.ok) assert.equal(result.filename, 'evidence.pdf');
+});
+
+test('monitor URL normalization trims and canonicalizes only safe root syntax', () => {
+  assert.equal(
+    normalizeMonitorUrl('  HTTPS://EXAMPLE.COM/  '),
+    'https://example.com'
+  );
+  assert.equal(
+    normalizeMonitorUrl('https://example.com/page/'),
+    'https://example.com/page/'
+  );
+  assert.equal(
+    normalizeMonitorUrl('https://example.com/page?view=full'),
+    'https://example.com/page?view=full'
+  );
+  assert.deepEqual(
+    monitorUrlComparisonValues('https://example.com'),
+    ['https://example.com', 'https://example.com/']
+  );
+});
+
+test('case names collapse repeated whitespace without changing display case', () => {
+  assert.equal(normalizeCaseName('  Smith   v.   Jones  '), 'Smith v. Jones');
+});
+
+test('Postgres unique violations map to monitor and case conflict responses', () => {
+  const error = { code: '23505', message: 'duplicate key value' };
+  assert.deepEqual(mapUniqueViolation(error, 'monitor'), {
+    code: 'MONITOR_ALREADY_EXISTS',
+    message: 'A monitor for this URL already exists.',
+    status: 409,
+  });
+  assert.deepEqual(mapUniqueViolation(error, 'case'), {
+    code: 'CASE_ALREADY_EXISTS',
+    message: 'A case with this name already exists.',
+    status: 409,
+  });
+  assert.equal(mapUniqueViolation({ code: '42501' }, 'monitor'), null);
+});
+
+test('dashboard duplicate and migration errors map to inline messages', () => {
+  assert.equal(
+    monitorCreationErrorMessage({ code: 'MONITOR_ALREADY_EXISTS' }),
+    'A monitor for this URL already exists. Use the existing monitor or choose a different case.'
+  );
+  assert.equal(
+    caseCreationErrorMessage({ code: 'CASE_ALREADY_EXISTS' }),
+    'A case with this name already exists.'
+  );
+  assert.equal(
+    monitorCreationErrorMessage({ code: 'DATABASE_MIGRATION_REQUIRED' }),
+    'Database setup is incomplete. Apply the latest Supabase migrations, then try again.'
+  );
+  assert.equal(
+    monitorCreationErrorMessage({ code: 'INTERNAL_ERROR' }),
+    'Failed to create monitor. Check server logs for details.'
+  );
 });

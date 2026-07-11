@@ -21,9 +21,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { BETA_LIMIT_MESSAGE, checkMonitorBetaLimit } from '@/lib/beta';
 import {
+  isMissingColumnError,
   isMissingTableError,
   logSupabaseError,
 } from '@/lib/database-errors';
+import {
+  mapUniqueViolation,
+} from '@/lib/duplicate-conflicts';
+import {
+  duplicateMonitorMessage,
+  findDuplicateMonitor,
+} from '@/lib/monitor-duplicates';
+import { normalizeMonitorUrl } from '@/lib/normalization';
 
 export async function POST(request: NextRequest) {
   try {
@@ -33,9 +42,6 @@ export async function POST(request: NextRequest) {
     if (auth.errorResponse) {
       return auth.errorResponse;
     }
-
-    const betaLimit = await checkMonitorBetaLimit(auth.supabase, auth.user.id);
-    if (!betaLimit.allowed) return apiErrorResponse('BETA_LIMIT_REACHED', BETA_LIMIT_MESSAGE, 429);
 
     const body = await request.json();
 
@@ -53,6 +59,8 @@ export async function POST(request: NextRequest) {
         400
       );
     }
+
+    const normalizedUrl = normalizeMonitorUrl(safeUrl.url);
 
     if (validatedData.case_id) {
       const { data: ownedCase, error: caseError } = await auth.supabase
@@ -78,6 +86,64 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const duplicateResult = await findDuplicateMonitor(
+      auth.supabase,
+      {
+        userId: auth.user.id,
+        normalizedUrl,
+        frequency: validatedData.frequency,
+        includeCaseId: Boolean(validatedData.case_id),
+      }
+    );
+
+    if (duplicateResult.error) {
+      logSupabaseError(
+        '[monitors:create:duplicate-check]',
+        duplicateResult.error
+      );
+      if (
+        validatedData.case_id &&
+        isMissingColumnError(
+          duplicateResult.error,
+          'case_id'
+        )
+      ) {
+        return apiErrorResponse(
+          'DATABASE_MIGRATION_REQUIRED',
+          'The cases database migration has not been applied.',
+          503
+        );
+      }
+      return apiErrorResponse(
+        'INTERNAL_ERROR',
+        'Failed to check existing monitors.',
+        500
+      );
+    }
+
+    if (duplicateResult.data) {
+      return apiErrorResponse(
+        'MONITOR_ALREADY_EXISTS',
+        duplicateMonitorMessage(
+          duplicateResult.data,
+          validatedData.case_id
+        ),
+        409
+      );
+    }
+
+    const betaLimit = await checkMonitorBetaLimit(
+      auth.supabase,
+      auth.user.id
+    );
+    if (!betaLimit.allowed) {
+      return apiErrorResponse(
+        'BETA_LIMIT_REACHED',
+        BETA_LIMIT_MESSAGE,
+        429
+      );
+    }
+
     const now = new Date().toISOString();
 
     const { data, error } = await auth.supabase
@@ -85,9 +151,9 @@ export async function POST(request: NextRequest) {
       .insert({
         user_id: auth.user.id,
 
-        url: safeUrl.url,
+        url: normalizedUrl,
 
-        normalized_url: safeUrl.url,
+        normalized_url: normalizedUrl,
 
         frequency:
           validatedData.frequency,
@@ -110,7 +176,21 @@ export async function POST(request: NextRequest) {
       .select();
 
     if (error) {
-      console.error('[v0] Supabase insert error:', error);
+      const duplicate = mapUniqueViolation(error, 'monitor');
+      if (duplicate) {
+        if (process.env.NODE_ENV !== 'production') {
+          logSupabaseError(
+            'Monitor duplicate insert blocked',
+            error
+          );
+        }
+        return apiErrorResponse(
+          duplicate.code,
+          duplicate.message,
+          duplicate.status
+        );
+      }
+      logSupabaseError('[monitors:create:insert]', error);
       return apiErrorResponse(
         'INTERNAL_ERROR',
         'Failed to create monitor.',

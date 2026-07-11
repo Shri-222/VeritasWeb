@@ -6,6 +6,9 @@ import {
   logSupabaseError,
 } from '@/lib/database-errors';
 import { rowsOrEmpty } from '@/lib/startup-compat';
+import { findDuplicateCase } from '@/lib/case-duplicates';
+import { mapUniqueViolation } from '@/lib/duplicate-conflicts';
+import { normalizeCaseName } from '@/lib/normalization';
 
 const caseInputSchema = z.object({
   name: z.string().trim().min(1).max(160),
@@ -43,11 +46,47 @@ export async function POST(request: NextRequest) {
 
   try {
     const input = caseInputSchema.parse(await request.json());
+    const normalizedName = normalizeCaseName(input.name);
+    const duplicateResult = await findDuplicateCase(
+      auth.supabase,
+      {
+        userId: auth.user.id,
+        normalizedName,
+      }
+    );
+
+    if (duplicateResult.error) {
+      logSupabaseError(
+        '[cases:create:duplicate-check]',
+        duplicateResult.error
+      );
+      if (isMissingTableError(duplicateResult.error, 'cases')) {
+        return apiErrorResponse(
+          'DATABASE_MIGRATION_REQUIRED',
+          'The cases database migration has not been applied.',
+          503
+        );
+      }
+      return apiErrorResponse(
+        'INTERNAL_ERROR',
+        'Failed to check existing cases.',
+        500
+      );
+    }
+
+    if (duplicateResult.data) {
+      return apiErrorResponse(
+        'CASE_ALREADY_EXISTS',
+        'A case with this name already exists.',
+        409
+      );
+    }
+
     const { data, error } = await auth.supabase
       .from('cases')
       .insert({
         user_id: auth.user.id,
-        name: input.name,
+        name: normalizedName,
         description: input.description ?? null,
         status: 'active',
       })
@@ -55,6 +94,17 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) {
+      const duplicate = mapUniqueViolation(error, 'case');
+      if (duplicate) {
+        if (process.env.NODE_ENV !== 'production') {
+          logSupabaseError('Case duplicate insert blocked', error);
+        }
+        return apiErrorResponse(
+          duplicate.code,
+          duplicate.message,
+          duplicate.status
+        );
+      }
       logSupabaseError('[cases:create]', error);
       if (isMissingTableError(error, 'cases')) {
         return apiErrorResponse(

@@ -51,3 +51,11 @@ WHERE namespaces.nspname = 'public'
   )
 ORDER BY classes.relname;
 
+SELECT
+  'unique_user_monitor' AS index_name,
+  to_regclass('public.unique_user_monitor') IS NOT NULL AS exists
+UNION ALL
+SELECT
+  'unique_user_case_name_normalized' AS index_name,
+  to_regclass('public.unique_user_case_name_normalized') IS NOT NULL AS exists
+ORDER BY index_name;

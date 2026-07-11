@@ -5,6 +5,9 @@ import {
   isMissingTableError,
   logSupabaseError,
 } from '@/lib/database-errors';
+import { findDuplicateCase } from '@/lib/case-duplicates';
+import { mapUniqueViolation } from '@/lib/duplicate-conflicts';
+import { normalizeCaseName } from '@/lib/normalization';
 
 const paramsSchema = z.object({ caseId: z.string().uuid() });
 const updateSchema = z.object({
@@ -67,6 +70,32 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ c
   if (result.errorResponse) return result.errorResponse;
   try {
     const input = updateSchema.parse(await request.json());
+    if (input.name) {
+      input.name = normalizeCaseName(input.name);
+      const duplicateResult = await findDuplicateCase(
+        result.auth.supabase,
+        {
+          userId: result.auth.user.id,
+          normalizedName: input.name,
+          excludeCaseId: result.caseId,
+        }
+      );
+
+      if (duplicateResult.error) {
+        logSupabaseError(
+          '[case:update:duplicate-check]',
+          duplicateResult.error
+        );
+        if (isMissingTableError(duplicateResult.error, 'cases')) {
+          return apiErrorResponse('DATABASE_MIGRATION_REQUIRED', 'The cases database migration has not been applied.', 503);
+        }
+        return apiErrorResponse('INTERNAL_ERROR', 'Failed to check existing cases.', 500);
+      }
+
+      if (duplicateResult.data) {
+        return apiErrorResponse('CASE_ALREADY_EXISTS', 'A case with this name already exists.', 409);
+      }
+    }
     const { data, error } = await result.auth.supabase
       .from('cases')
       .update(input)
@@ -75,7 +104,14 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ c
       .select('*')
       .single();
     if (error) {
-      console.error('[case:update]', error);
+      const duplicate = mapUniqueViolation(error, 'case');
+      if (duplicate) {
+        if (process.env.NODE_ENV !== 'production') {
+          logSupabaseError('Case duplicate update blocked', error);
+        }
+        return apiErrorResponse(duplicate.code, duplicate.message, duplicate.status);
+      }
+      logSupabaseError('[case:update]', error);
       return apiErrorResponse('INTERNAL_ERROR', 'Failed to update case.', 500);
     }
     return NextResponse.json({ success: true, data });

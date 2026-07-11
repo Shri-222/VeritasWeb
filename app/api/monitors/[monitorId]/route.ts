@@ -15,9 +15,16 @@ import {
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import type { Database } from '@/types/database';
 import {
+  isMissingColumnError,
   isMissingTableError,
   logSupabaseError,
 } from '@/lib/database-errors';
+import { mapUniqueViolation } from '@/lib/duplicate-conflicts';
+import {
+  duplicateMonitorMessage,
+  findDuplicateMonitor,
+} from '@/lib/monitor-duplicates';
+import { normalizeMonitorUrl } from '@/lib/normalization';
 
 const paramsSchema = z.object({
   monitorId: z.string().uuid(),
@@ -256,8 +263,68 @@ export async function PATCH(
         );
       }
 
-      update.url = safeUrl.url;
-      update.normalized_url = safeUrl.url;
+      const normalizedUrl = normalizeMonitorUrl(safeUrl.url);
+      update.url = normalizedUrl;
+      update.normalized_url = normalizedUrl;
+    }
+
+    if (input.url || input.frequency) {
+      const normalizedUrl = normalizeMonitorUrl(
+        update.normalized_url ??
+        result.monitor.normalized_url ??
+        result.monitor.url
+      );
+      const requestedCaseId =
+        input.case_id !== undefined
+          ? input.case_id
+          : result.monitor.case_id;
+      const duplicateResult = await findDuplicateMonitor(
+        result.auth.supabase,
+        {
+          userId: result.auth.user.id,
+          normalizedUrl,
+          frequency:
+            input.frequency ?? result.monitor.frequency,
+          excludeMonitorId: result.monitorId,
+          includeCaseId: Boolean(requestedCaseId),
+        }
+      );
+
+      if (duplicateResult.error) {
+        logSupabaseError(
+          '[monitor:item:patch:duplicate-check]',
+          duplicateResult.error
+        );
+        if (
+          requestedCaseId &&
+          isMissingColumnError(
+            duplicateResult.error,
+            'case_id'
+          )
+        ) {
+          return apiErrorResponse(
+            'DATABASE_MIGRATION_REQUIRED',
+            'The cases database migration has not been applied.',
+            503
+          );
+        }
+        return apiErrorResponse(
+          'INTERNAL_ERROR',
+          'Failed to check existing monitors.',
+          500
+        );
+      }
+
+      if (duplicateResult.data) {
+        return apiErrorResponse(
+          'MONITOR_ALREADY_EXISTS',
+          duplicateMonitorMessage(
+            duplicateResult.data,
+            requestedCaseId
+          ),
+          409
+        );
+      }
     }
 
     const { data: monitor, error } =
@@ -270,7 +337,21 @@ export async function PATCH(
         .single();
 
     if (error) {
-      console.error('[monitor:item:patch]', error);
+      const duplicate = mapUniqueViolation(error, 'monitor');
+      if (duplicate) {
+        if (process.env.NODE_ENV !== 'production') {
+          logSupabaseError(
+            'Monitor duplicate update blocked',
+            error
+          );
+        }
+        return apiErrorResponse(
+          duplicate.code,
+          duplicate.message,
+          duplicate.status
+        );
+      }
+      logSupabaseError('[monitor:item:patch]', error);
 
       return apiErrorResponse(
         'INTERNAL_ERROR',

@@ -26,7 +26,10 @@ import {
   StatusBadge,
 } from '@/components/veritas-ui';
 import { createClient } from '@/lib/supabase/client';
-import { parseDownloadResponse } from '@/lib/download-response';
+import {
+  parseDownloadResponse,
+  triggerBrowserDownload,
+} from '@/lib/download-response';
 
 type CaptureDetail = {
   id: string;
@@ -404,14 +407,7 @@ export default function CaptureDetailPage() {
         return;
       }
 
-      const url = URL.createObjectURL(result.blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = result.filename;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
+      triggerBrowserDownload(result.blob, result.filename);
     } catch (exportError) {
       setError(
         exportError instanceof Error
@@ -439,14 +435,7 @@ export default function CaptureDetailPage() {
         setError(result.message);
         return;
       }
-      const objectUrl = URL.createObjectURL(result.blob);
-      const link = document.createElement('a');
-      link.href = objectUrl;
-      link.download = result.filename;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(objectUrl);
+      triggerBrowserDownload(result.blob, result.filename);
     } catch (bundleError) {
       setError(bundleError instanceof Error ? bundleError.message : 'Evidence bundle export failed.');
     } finally {
