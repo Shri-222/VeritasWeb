@@ -105,6 +105,7 @@ Run SQL scripts in order:
 8. `scripts/08-change-detection.sql`
 9. `scripts/09-notifications.sql`
 10. `scripts/10-provider-and-timestamp-fields.sql`
+11. `scripts/11-duplicate-case-names.sql`
 
 Create a private Storage bucket named `captures`. Stored screenshots and HTML files should not be public by default.
 Capture rows are server-created only; direct authenticated inserts into `captures` are intentionally blocked so evidence records cannot be forged through the browser client.

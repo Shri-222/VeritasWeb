@@ -6,6 +6,7 @@
 # next.js
 /.next/
 /out/
+.agents
 
 # production
 /build
@@ -27,6 +28,4 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# MD files 
-*.md
-!CLEANUP_NOTES.md
+_private/*.md
