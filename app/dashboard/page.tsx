@@ -646,13 +646,17 @@ export default function HomePage() {
               artifacts, and export evidence reports from one secure workspace.
             </p>
           </div>
-          <a
-            href="#create-monitor"
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-cyan-500 px-4 py-3 text-sm font-semibold text-[#06111A] transition hover:bg-cyan-600"
-          >
-            Create Monitor
-          </a>
-          <Link href="#cases" className="text-sm text-cyan-300 hover:text-cyan-200">Cases</Link>
+          <div className="flex flex-wrap items-center gap-3">
+            <Link
+              href="#create-monitor"
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-cyan-500 px-4 py-3 text-sm font-semibold text-[#06111A] transition hover:bg-cyan-600"
+            >
+              Create Monitor
+            </Link>
+            <Link href="#cases" className="inline-flex items-center justify-center gap-2 rounded-lg bg-cyan-500 px-4 py-3 text-sm font-semibold text-[#06111A] transition hover:bg-cyan-600">
+              Cases
+            </Link>
+          </div>
         </section>
 
         {monitors.length === 0 && (
