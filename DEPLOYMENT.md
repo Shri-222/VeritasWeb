@@ -36,16 +36,16 @@ Keep server-only secrets out of browser-exposed config and source control.
 Build locally:
 
 ```bash
-docker build -t veritasweb .
+docker build -t veritasweb:local .
 ```
 
 Run locally:
 
 ```bash
-docker run --env-file .env.local -p 3000:3000 veritasweb
+docker run --rm --env-file .env.docker -p 3000:3000 veritasweb:local
 ```
 
-The Dockerfile installs Playwright Chromium and its OS dependencies with `npx playwright install --with-deps chromium`.
+The Dockerfile uses the Playwright `v1.60.0` base image, builds Next.js standalone output, runs as a non-root user, and includes a healthcheck for `/api/health`. See `DOCKER_DEPLOYMENT.md` for Docker Compose, PowerShell commands, Playwright smoke testing, cloud Docker notes, and the Docker QA checklist.
 
 ## Scheduled Captures
 
